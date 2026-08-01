@@ -65,7 +65,7 @@ async def test_store_stock_limitation_does_not_call_dependencies() -> None:
     response = await chat.process(ChatRequest(mensaje="¿En qué tiendas hay stock?"))
 
     assert response.intencion == IntentType.CONSULTAR_STOCK
-    assert "necesito tu ubicación" in response.respuesta
+    assert "qué ciudad" in response.respuesta.lower()
     vtex.search.assert_not_awaited()
     coolbox.orders_by_number.assert_not_awaited()
     ai.analyze.assert_not_awaited()
@@ -105,4 +105,23 @@ async def test_store_stock_uses_checkout_pickup_simulation_with_location() -> No
         product,
         latitude=-12.12,
         longitude=-77.03,
+    )
+
+
+async def test_store_stock_infers_piura_from_webchat_message() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    product = Product(id="10", nombre="iPhone 15", disponible=True)
+    vtex.search.return_value = [product]
+    vtex.pickup_stores.return_value = [PickupStore(id="piura-1", nombre="Coolbox Piura", ciudad="Piura")]
+
+    response = await chat.process(ChatRequest(mensaje="¿Qué tiendas tienen stock del iPhone 15 en Piura?"))
+
+    assert response.intencion == IntentType.CONSULTAR_STOCK
+    assert "Coolbox Piura" in response.respuesta
+    assert "cerca de Piura" in response.respuesta
+    vtex.pickup_stores.assert_awaited_once_with(
+        product,
+        latitude=-5.1945,
+        longitude=-80.6328,
     )

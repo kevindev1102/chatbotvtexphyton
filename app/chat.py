@@ -10,6 +10,7 @@ from app.ai import OpenAIService
 from app.clients import CoolboxClient, VtexClient
 from app.errors import ExternalServiceError
 from app.intent import IntentService, contains_any, normalize
+from app.locations import find_named_location, without_named_location
 from app.models import (
     ChatRequest,
     ChatResponse,
@@ -40,23 +41,25 @@ class ChatService:
         message = request.mensaje.strip()
         history = request.historial[-10:]
         asks_store_stock = self._asks_store_availability(message)
+        named_location = find_named_location(message) if request.ubicacion is None else None
 
-        if asks_store_stock and request.ubicacion is None:
+        if asks_store_stock and request.ubicacion is None and named_location is None:
             return ChatResponse(
                 intencion=IntentType.CONSULTAR_STOCK,
                 respuesta=(
-                    "Para buscar tiendas con disponibilidad para recojo necesito tu ubicación. "
-                    "Comparte latitud y longitud junto con la consulta del producto."
+                    "¿En qué ciudad deseas buscar tiendas con disponibilidad para recojo? "
+                    "Por ejemplo: Lima, Piura, Arequipa o Trujillo."
                 ),
             )
 
-        local_analysis = self.intent.analyze(message)
+        analysis_message = without_named_location(message, named_location)
+        local_analysis = self.intent.analyze(analysis_message)
         if local_analysis.intencion.is_support:
             return await self._process_support(local_analysis, history, message)
 
         analysis = local_analysis
         try:
-            ai_analysis = await self.ai.analyze(message, history)
+            ai_analysis = await self.ai.analyze(analysis_message, history)
             if not ai_analysis.intencion.is_support:
                 analysis = self._merge_analysis(ai_analysis, local_analysis)
         except ExternalServiceError:
@@ -90,15 +93,19 @@ class ChatService:
                 respuesta=self._no_data_message(analysis),
             )
 
-        if asks_store_stock and request.ubicacion is not None:
+        if asks_store_stock and (request.ubicacion is not None or named_location is not None):
+            latitude = request.ubicacion.latitud if request.ubicacion is not None else named_location.latitude
+            longitude = (
+                request.ubicacion.longitud if request.ubicacion is not None else named_location.longitude
+            )
             try:
                 selected_product = products[0]
                 stores: list[PickupStore] = []
                 for candidate in products[:5]:
                     candidate_stores = await self.vtex.pickup_stores(
                         candidate,
-                        latitude=request.ubicacion.latitud,
-                        longitude=request.ubicacion.longitud,
+                        latitude=latitude,
+                        longitude=longitude,
                     )
                     if candidate_stores:
                         selected_product = candidate
@@ -114,7 +121,9 @@ class ChatService:
                 )
             return ChatResponse(
                 intencion=IntentType.CONSULTAR_STOCK,
-                respuesta=self._pickup_stores_answer(selected_product, stores),
+                respuesta=self._pickup_stores_answer(
+                    selected_product, stores, named_location.name if named_location else None
+                ),
             )
 
         if analysis.intencion in {
@@ -394,14 +403,18 @@ class ChatService:
             lines.append(f"• {product.nombre} — {price} — {stock}")
         return "\n".join(lines)
 
-    def _pickup_stores_answer(self, product: Product, stores: list[PickupStore]) -> str:
+    def _pickup_stores_answer(
+        self, product: Product, stores: list[PickupStore], searched_location: str | None = None
+    ) -> str:
         if not stores:
+            location_text = f" cerca de {searched_location}" if searched_location else " cercanas"
             return (
-                f"No encontré tiendas cercanas con {product.nombre} disponible para recojo. "
+                f"No encontré tiendas{location_text} con {product.nombre} disponible para recojo. "
                 "Puedes probar con otra ubicación o producto."
             )
 
-        lines = [f"Encontré {product.nombre} disponible para recojo en:"]
+        location_text = f" cerca de {searched_location}" if searched_location else ""
+        lines = [f"Encontré {product.nombre} disponible para recojo{location_text} en:"]
         for store in stores[:5]:
             location = ", ".join(value for value in (store.direccion, store.distrito, store.ciudad) if value)
             distance = f" · {store.distancia_km:.1f} km" if store.distancia_km is not None else ""
