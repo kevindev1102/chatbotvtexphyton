@@ -18,6 +18,7 @@ from app.models import (
     IntentType,
     LocationAvailability,
     Product,
+    ProductCard,
     QueryAnalysis,
 )
 from app.relevance import ACCESSORY_TERMS, rank_catalog_products
@@ -149,6 +150,7 @@ class ChatService:
                     availability,
                     named_location.name if named_location else None,
                 ),
+                productos=self._product_cards([selected_product]),
             )
 
         if analysis.intencion in {
@@ -162,7 +164,11 @@ class ChatService:
                 answer = await self.ai.answer(message, history, products)
             except ExternalServiceError:
                 answer = self._local_product_answer(products)
-        return ChatResponse(respuesta=answer, intencion=analysis.intencion)
+        return ChatResponse(
+            respuesta=answer,
+            intencion=analysis.intencion,
+            productos=self._product_cards(products),
+        )
 
     async def _process_support(
         self, analysis: QueryAnalysis, history: list[Any], message: str
@@ -563,19 +569,19 @@ class ChatService:
 
     def _deterministic_product_answer(self, intent: IntentType, products: list[Product]) -> str:
         if intent == IntentType.CONSULTAR_PRECIO:
-            lines = ["Estos son los precios que encontré:"]
+            lines = ["💰 Estos son los precios que encontré:"]
             for product in products[:3]:
                 price = self._price(product.precio) if product.precio is not None else "precio no disponible"
                 lines.append(f"• {product.nombre}: {price}")
             return "\n".join(lines)
         if intent == IntentType.CONSULTAR_STOCK:
-            lines = ["Disponibilidad general del catálogo:"]
+            lines = ["📦 Disponibilidad general del catálogo:"]
             for product in products[:3]:
                 status = "disponible en tienda online" if product.disponible else "sin stock disponible"
                 lines.append(f"• {product.nombre}: {status}")
             return "\n".join(lines)
         product = products[0]
-        lines = [f"Características principales de {product.nombre}:"]
+        lines = [f"✨ Características principales de {product.nombre}:"]
         for name, values in list(product.caracteristicas.items())[:6]:
             lines.append(f"• {name}: {', '.join(values[:3])}")
         if len(lines) == 1 and product.descripcion:
@@ -584,12 +590,28 @@ class ChatService:
         return "\n".join(lines)
 
     def _local_product_answer(self, products: list[Product]) -> str:
-        lines = ["Encontré estas opciones:"]
+        lines = ["🔎 Encontré estas opciones:"]
         for product in products[:3]:
             price = self._price(product.precio) if product.precio is not None else "precio no disponible"
             stock = "disponible" if product.disponible else "agotado"
             lines.append(f"• {product.nombre} — {price} — {stock}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _product_cards(products: list[Product], limit: int = 3) -> list[ProductCard]:
+        return [
+            ProductCard(
+                id=product.id,
+                nombre=product.nombre,
+                marca=product.marca,
+                precio=float(product.precio) if product.precio is not None else None,
+                moneda=product.moneda,
+                disponible=product.disponible,
+                imagenUrl=product.imagen_url,
+                urlProducto=product.url_producto,
+            )
+            for product in products[:limit]
+        ]
 
     def _location_availability_answer(
         self,
@@ -604,13 +626,13 @@ class ChatService:
         if not stores and not delivery_options:
             if availability.disponible_online:
                 return (
-                    f"{product.nombre} sí figura con stock para compra online. "
+                    f"🛒 {product.nombre} sí figura con stock para compra online. "
                     f"No encontré recojo en tienda ni pude confirmar el envío a domicilio{location_text} "
                     "usando la ubicación de referencia. La cobertura de delivery se calcula con la "
                     "dirección exacta; confírmala en el checkout de Coolbox."
                 )
             return (
-                f"No encontré {product.nombre} disponible para envío a domicilio ni recojo en tienda"
+                f"😕 No encontré {product.nombre} disponible para envío a domicilio ni recojo en tienda"
                 f"{location_text}. Puedes probar con otra ubicación o producto."
             )
 
@@ -623,7 +645,8 @@ class ChatService:
             }
             estimate_text = f" (estimado: {', '.join(sorted(estimates))})" if estimates else ""
             lines.append(
-                f"Sí, {product.nombre} está disponible con envío a domicilio{location_text}{estimate_text}."
+                f"🚚 Sí, {product.nombre} está disponible con envío a domicilio"
+                f"{location_text}{estimate_text}."
             )
 
         if not stores:
@@ -633,7 +656,7 @@ class ChatService:
 
         pickup_location = f" cerca de {searched_location}" if searched_location else ""
         pickup_prefix = "También está" if delivery_options else f"Encontré {product.nombre}"
-        lines.append(f"{pickup_prefix} disponible para recojo{pickup_location} en:")
+        lines.append(f"📍 {pickup_prefix} disponible para recojo{pickup_location} en:")
         for store in stores[:5]:
             location = ", ".join(value for value in (store.direccion, store.distrito, store.ciudad) if value)
             distance = f" · {store.distancia_km:.1f} km" if store.distancia_km is not None else ""

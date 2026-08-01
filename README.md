@@ -113,10 +113,26 @@ Respuesta:
 
 ```json
 {
-  "respuesta": "...",
-  "intencion": "CONSULTAR_STOCK"
+  "respuesta": "📦 Disponibilidad general del catálogo: ...",
+  "intencion": "CONSULTAR_STOCK",
+  "productos": [
+    {
+      "id": "123",
+      "nombre": "Apple iPhone 15 128GB",
+      "marca": "Apple",
+      "precio": 2999.0,
+      "moneda": "PEN",
+      "disponible": true,
+      "imagenUrl": "https://.../iphone-15.jpg",
+      "urlProducto": "https://.../iphone-15/p"
+    }
+  ]
 }
 ```
+
+`productos` es una lista opcional para que el widget pueda mostrar tarjetas con imagen,
+precio y un botón hacia la ficha. En consultas generales o de soporte se devuelve vacía.
+Los campos `respuesta` e `intencion` se mantienen sin cambios para conservar compatibilidad.
 
 El historial es opcional, admite hasta 10 mensajes y acepta los roles
 `usuario`/`asistente` o `user`/`assistant`.

@@ -275,6 +275,8 @@ class VtexClient(BaseHttpClient):
             moneda="PEN" if price is not None else None,
             stock_disponible=stock,
             disponible=bool(stock and stock > 0),
+            imagen_url=first_image,
+            url_producto=raw.get("link"),
             caracteristicas=specifications,
             sku_offers=sku_offers,
         )

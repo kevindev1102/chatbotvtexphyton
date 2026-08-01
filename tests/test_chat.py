@@ -186,6 +186,8 @@ async def test_generic_iphone_query_excludes_accessories() -> None:
             categorias=["/Celulares y Smartphones/"],
             disponible=True,
             stock_disponible=4,
+            imagen_url="https://cdn.example.test/iphone-15.jpg",
+            url_producto="https://www.example.test/iphone-15/p",
         ),
     ]
 
@@ -196,6 +198,9 @@ async def test_generic_iphone_query_excludes_accessories() -> None:
     assert "Cable Lightning" not in response.respuesta
     assert "unidades" not in response.respuesta
     assert "disponible en tienda online" in response.respuesta
+    assert len(response.productos) == 1
+    assert response.productos[0].imagen_url == "https://cdn.example.test/iphone-15.jpg"
+    assert response.productos[0].url_producto == "https://www.example.test/iphone-15/p"
 
 
 async def test_greeting_before_iphone_query_returns_phones() -> None:

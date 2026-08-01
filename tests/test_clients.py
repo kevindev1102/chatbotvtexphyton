@@ -54,6 +54,7 @@ def test_maps_best_available_vtex_offer() -> None:
     assert str(product.precio) == "3300"
     assert product.stock_disponible == 4
     assert product.disponible is True
+    assert product.imagen_url == "https://example.test/image.jpg"
     assert product.caracteristicas["Memoria RAM"] == ["16 GB"]
     assert product.sku_offers[0].sku_id == "sku-10"
 
