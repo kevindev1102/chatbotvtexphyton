@@ -193,6 +193,23 @@ async def test_generic_iphone_query_excludes_accessories() -> None:
     assert "disponible en tienda online" in response.respuesta
 
 
+async def test_greeting_before_iphone_query_returns_phones() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    phone = Product(
+        nombre="Apple iPhone 15 128GB",
+        categoria="Celulares",
+        categorias=["/Celulares y Smartphones/"],
+        disponible=True,
+    )
+    vtex.search.return_value = [phone]
+
+    response = await chat.process(ChatRequest(mensaje="hola que iphones tienes?"))
+
+    assert "Apple iPhone 15" in response.respuesta
+    vtex.search.assert_awaited_once_with("iphone", order_by=None)
+
+
 async def test_location_only_followup_reuses_product_from_history() -> None:
     chat, vtex, _, ai = service()
     ai.analyze.side_effect = ExternalServiceError("offline")

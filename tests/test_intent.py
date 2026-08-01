@@ -59,3 +59,18 @@ def test_ipad_query_removes_conversational_noise() -> None:
     assert analysis.intencion == IntentType.CONSULTAR_STOCK
     assert analysis.busqueda == "ipad"
     assert analysis.categoria == "tablet"
+
+
+def test_greeting_does_not_contaminate_product_search() -> None:
+    analysis = IntentService().analyze("Hola, ¿qué iPhones tienes?")
+
+    assert analysis.busqueda == "iphone"
+    assert analysis.categoria == "celular"
+
+
+def test_long_greeting_does_not_contaminate_product_search() -> None:
+    analysis = IntentService().analyze("Buenas tardes Coolbot, quisiera saber qué laptops Lenovo tienes")
+
+    assert analysis.busqueda == "laptop lenovo"
+    assert analysis.marca == "lenovo"
+    assert analysis.categoria == "laptop"
