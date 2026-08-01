@@ -88,6 +88,7 @@ FILLER_WORDS = {
     "hay",
     "tienen",
     "tiene",
+    "tienes",
     "comparar",
     "compara",
     "versus",
@@ -120,6 +121,7 @@ FILLER_WORDS = {
     "cueste",
     "consulta",
     "en",
+    "si",
     "donde",
     "tienda",
     "tiendas",
@@ -244,7 +246,7 @@ def _detect_intent(text: str, identifiers: dict[str, str | None]) -> IntentType:
         text, "regalo", "obsequio", "recomienda", "recomiendame", "recomendar", "sugiere", "conviene"
     ):
         return IntentType.RECOMENDAR_PRODUCTOS
-    if contains_any(text, "stock", "disponible", "disponibilidad", "hay", "quedan", "en tienda"):
+    if contains_any(text, "stock", "disponible", "disponibilidad", "hay", "quedan", "en tienda", "tienes"):
         return IntentType.CONSULTAR_STOCK
     if contains_any(
         text,
@@ -349,6 +351,8 @@ class IntentService:
             ),
             None,
         )
+        if re.search(r"\biphones?\b", normalized):
+            category = "celular"
         ambiguous = (
             not intent.is_support
             and intent

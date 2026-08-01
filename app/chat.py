@@ -43,6 +43,14 @@ class ChatService:
         asks_store_stock = self._asks_store_availability(message)
         named_location = find_named_location(message) if request.ubicacion is None else None
 
+        analysis_message = without_named_location(message, named_location)
+        current_analysis = self.intent.analyze(analysis_message)
+        if named_location is not None and self._is_location_only_followup(current_analysis):
+            prior_query = self._prior_catalog_query(history)
+            if prior_query:
+                analysis_message = f"{prior_query} stock"
+                asks_store_stock = True
+
         if asks_store_stock and request.ubicacion is None and named_location is None:
             return ChatResponse(
                 intencion=IntentType.CONSULTAR_STOCK,
@@ -52,7 +60,6 @@ class ChatService:
                 ),
             )
 
-        analysis_message = without_named_location(message, named_location)
         local_analysis = self.intent.analyze(analysis_message)
         if local_analysis.intencion.is_support:
             return await self._process_support(local_analysis, history, message)
@@ -266,6 +273,39 @@ class ChatService:
     @staticmethod
     def _filter_products(products: list[Product], analysis: QueryAnalysis) -> list[Product]:
         result = products
+        normalized_query = normalize(analysis.busqueda)
+        requests_iphone = "iphone" in normalized_query
+        requests_phone = analysis.categoria == "celular" or requests_iphone
+        if requests_phone:
+            accessory_terms = {
+                "adaptador",
+                "audifono",
+                "cable",
+                "cargador",
+                "case",
+                "correa",
+                "estuche",
+                "funda",
+                "lamina",
+                "mica",
+                "power bank",
+                "protector",
+                "soporte",
+                "vidrio",
+            }
+
+            def is_requested_phone(product: Product) -> bool:
+                name = normalize(product.nombre)
+                categories = normalize(" ".join(product.categorias))
+                is_accessory = any(term in name for term in accessory_terms)
+                if requests_iphone:
+                    return "iphone" in name and not is_accessory
+                is_phone_category = any(
+                    term in categories for term in ("celular", "smartphone", "telefono movil")
+                )
+                return is_phone_category and not is_accessory
+
+            result = [product for product in result if is_requested_phone(product)]
         if analysis.marca:
             brand = normalize(analysis.marca)
             branded = [product for product in result if normalize(product.marca) == brand]
@@ -292,6 +332,26 @@ class ChatService:
         result.sort(key=lambda product: (not product.disponible, product.precio or Decimal("Infinity")))
         count = min(analysis.cantidad or 5, 5)
         return result[:count]
+
+    def _prior_catalog_query(self, history: list[Any]) -> str | None:
+        for item in reversed(history):
+            role = getattr(item, "rol", "")
+            if role not in {"usuario", "user"}:
+                continue
+            content = getattr(item, "contenido", "")
+            previous_location = find_named_location(content)
+            analysis = self.intent.analyze(without_named_location(content, previous_location))
+            if analysis.intencion.is_support:
+                continue
+            query = normalize(analysis.busqueda)
+            if query and query not in {"si", "tiene", "producto", "productos"}:
+                return query
+        return None
+
+    @staticmethod
+    def _is_location_only_followup(analysis: QueryAnalysis) -> bool:
+        query = normalize(analysis.busqueda)
+        return not query or query in {"si", "tiene", "producto", "productos"}
 
     @staticmethod
     def _missing_support_parameter(analysis: QueryAnalysis) -> str | None:

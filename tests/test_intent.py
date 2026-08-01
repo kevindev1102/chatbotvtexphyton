@@ -36,3 +36,18 @@ def test_extracts_budget() -> None:
     assert analysis.intencion == IntentType.RECOMENDAR_PRODUCTOS
     assert analysis.busqueda == "celular"
     assert str(analysis.precio_maximo) == "1000"
+
+
+def test_generic_iphone_stock_has_clean_query_and_phone_category() -> None:
+    analysis = IntentService().analyze("¿Tienes stock de iPhones?")
+
+    assert analysis.intencion == IntentType.CONSULTAR_STOCK
+    assert analysis.busqueda == "iphone"
+    assert analysis.categoria == "celular"
+
+
+def test_phone_availability_wording_is_stock_intent() -> None:
+    analysis = IntentService().analyze("¿Celular iPhone tienes?")
+
+    assert analysis.intencion == IntentType.CONSULTAR_STOCK
+    assert analysis.busqueda == "celular iphone"

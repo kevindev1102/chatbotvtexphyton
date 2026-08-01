@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 from app.chat import ChatService
 from app.errors import ExternalServiceError
 from app.intent import IntentService
-from app.models import ChatRequest, CoolboxResponse, IntentType, PickupStore, Product
+from app.models import ChatRequest, CoolboxResponse, HistoryMessage, IntentType, PickupStore, Product
 
 
 def service() -> tuple[ChatService, AsyncMock, AsyncMock, AsyncMock]:
@@ -124,4 +124,65 @@ async def test_store_stock_infers_piura_from_webchat_message() -> None:
         product,
         latitude=-5.1945,
         longitude=-80.6328,
+    )
+
+
+async def test_generic_iphone_query_excludes_accessories() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    vtex.search.return_value = [
+        Product(
+            id="cable",
+            nombre="Cable Lightning para iPhone",
+            categoria="Accesorios",
+            categorias=["/Accesorios/"],
+            disponible=True,
+            stock_disponible=100,
+        ),
+        Product(
+            id="phone",
+            nombre="Apple iPhone 15 128GB",
+            categoria="Celulares",
+            categorias=["/Celulares y Smartphones/"],
+            disponible=True,
+            stock_disponible=4,
+        ),
+    ]
+
+    response = await chat.process(ChatRequest(mensaje="¿Tienes stock de iPhones?"))
+
+    assert response.intencion == IntentType.CONSULTAR_STOCK
+    assert "Apple iPhone 15" in response.respuesta
+    assert "Cable Lightning" not in response.respuesta
+
+
+async def test_location_only_followup_reuses_product_from_history() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    product = Product(
+        id="phone",
+        nombre="Apple iPhone 15 128GB",
+        categoria="Celulares",
+        categorias=["/Celulares y Smartphones/"],
+        disponible=True,
+    )
+    vtex.search.return_value = [product]
+    vtex.pickup_stores.return_value = [
+        PickupStore(id="lima-1", nombre="Coolbox Centro Cívico", ciudad="Lima")
+    ]
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="¿Y en Lima sí hay?",
+            historial=[HistoryMessage(rol="usuario", contenido="¿Tienes stock del iPhone 15?")],
+        )
+    )
+
+    assert response.intencion == IntentType.CONSULTAR_STOCK
+    assert "Coolbox Centro Cívico" in response.respuesta
+    vtex.search.assert_awaited_once_with("iphone 15", order_by=None)
+    vtex.pickup_stores.assert_awaited_once_with(
+        product,
+        latitude=-12.0464,
+        longitude=-77.0428,
     )
