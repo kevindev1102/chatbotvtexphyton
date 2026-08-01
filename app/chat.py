@@ -20,7 +20,7 @@ from app.models import (
     Product,
     QueryAnalysis,
 )
-from app.relevance import rank_catalog_products
+from app.relevance import ACCESSORY_TERMS, rank_catalog_products
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,15 @@ class ChatService:
 
         analysis_message = without_named_location(message, named_location)
         current_analysis = self.intent.analyze(analysis_message)
+        referenced_product = self._referenced_product_from_history(message, history)
+        if referenced_product:
+            intent_prefix = {
+                IntentType.CONSULTAR_PRECIO: "precio",
+                IntentType.CONSULTAR_STOCK: "stock",
+                IntentType.CONSULTAR_CARACTERISTICAS: "caracteristicas",
+            }.get(current_analysis.intencion, "buscar")
+            analysis_message = f"{intent_prefix} {referenced_product}"
+            current_analysis = self.intent.analyze(analysis_message)
         if named_location is not None and self._is_location_only_followup(current_analysis):
             prior_query = self._prior_catalog_query(history)
             if prior_query:
@@ -62,6 +71,8 @@ class ChatService:
             )
 
         local_analysis = self.intent.analyze(analysis_message)
+        if referenced_product:
+            local_analysis.cantidad = 1
         if local_analysis.intencion.is_support:
             return await self._process_support(local_analysis, history, message)
 
@@ -189,21 +200,53 @@ class ChatService:
             if analysis.intencion == IntentType.CONSULTAR_PEDIDO:
                 if analysis.order_id and self.vtex.can_query_orders:
                     order = await self.vtex.get_order(analysis.order_id)
+                    profile = order.get("clientProfileData") or {}
+                    if not self._same_identifier(profile.get("document"), analysis.document_number):
+                        return ChatResponse(
+                            intencion=analysis.intencion,
+                            respuesta=(
+                                "No pude validar el pedido con el documento indicado. "
+                                "Revisa ambos datos e intenta nuevamente."
+                            ),
+                        )
                     return ChatResponse(
                         intencion=analysis.intencion,
                         respuesta=self._vtex_order_answer(order),
                     )
-                response = (
-                    await self.coolbox.orders_by_number(analysis.order_id)
-                    if analysis.order_id
-                    else await self.coolbox.orders_by_document(analysis.document_number or "")
+                response = await self.coolbox.orders_by_document(analysis.document_number or "")
+                response.pedidos = self._matching_items(
+                    response.pedidos,
+                    analysis.order_id,
+                    "numero",
+                    "pedido",
+                    "orderId",
                 )
             elif analysis.intencion == IntentType.CONSULTAR_DEVOLUCION_DINERO:
-                response = await self.coolbox.refunds(analysis.document_number, analysis.credit_note)
+                response = await self.coolbox.refunds(analysis.document_number, None)
+                response.notas_credito = self._matching_items(
+                    response.notas_credito,
+                    analysis.credit_note,
+                    "notaCredito",
+                    "numeroNotaCredito",
+                    "ncr",
+                )
             elif analysis.intencion == IntentType.CONSULTAR_EXTORNO:
-                response = await self.coolbox.chargebacks(analysis.document_number, analysis.order_id)
+                response = await self.coolbox.chargebacks(analysis.document_number, None)
+                response.pedidos = self._matching_items(
+                    response.pedidos,
+                    analysis.order_id,
+                    "numero",
+                    "pedido",
+                    "orderId",
+                )
             else:
-                response = await self.coolbox.service_orders(analysis.document_number, analysis.service_order)
+                response = await self.coolbox.service_orders(analysis.document_number, None)
+                response.ordenes_servicio = self._matching_items(
+                    response.ordenes_servicio,
+                    analysis.service_order,
+                    "ordenServicio",
+                    "ods",
+                )
         except ExternalServiceError:
             return ChatResponse(
                 intencion=analysis.intencion,
@@ -255,6 +298,38 @@ class ChatService:
                 order_by="OrderByTopSaleDESC",
             )
         order = "OrderByPriceASC" if analysis.ordenar_por_menor_precio else None
+        if analysis.marca and analysis.categoria:
+            queries = [
+                value
+                for value in dict.fromkeys(
+                    [
+                        analysis.busqueda,
+                        f"{analysis.marca} {analysis.categoria}",
+                        f"{analysis.categoria} {analysis.marca}",
+                        analysis.marca,
+                    ]
+                )
+                if value
+            ]
+            return await self.vtex.search_many(queries)
+        normalized_query = normalize(analysis.busqueda)
+        requested_accessories = [term for term in ACCESSORY_TERMS if contains_any(normalized_query, term)]
+        if requested_accessories:
+            queries = [value for value in dict.fromkeys([analysis.busqueda, *requested_accessories]) if value]
+            return await self.vtex.search_many(queries)
+        if analysis.categoria == "consola" and analysis.busqueda != analysis.categoria:
+            queries = [
+                value
+                for value in dict.fromkeys(
+                    [
+                        analysis.busqueda,
+                        f"{analysis.busqueda} {analysis.categoria}",
+                        analysis.categoria,
+                    ]
+                )
+                if value
+            ]
+            return await self.vtex.search_many(queries)
         return await self.vtex.search(
             analysis.busqueda or analysis.marca or analysis.categoria, order_by=order
         )
@@ -262,13 +337,35 @@ class ChatService:
     @staticmethod
     def _merge_analysis(ai: QueryAnalysis, local: QueryAnalysis) -> QueryAnalysis:
         # Los extractores deterministas conservan precios y términos claros cuando el modelo los omite.
-        ai.busqueda = ai.busqueda or local.busqueda
-        ai.marca = ai.marca or local.marca
-        ai.categoria = ai.categoria or local.categoria
+        local_query = normalize(local.busqueda)
+        reference_words = {
+            "anterior",
+            "ese",
+            "esa",
+            "este",
+            "esta",
+            "primero",
+            "primera",
+            "segundo",
+            "segunda",
+            "tercero",
+            "tercera",
+            "otro",
+            "otra",
+        }
+        has_explicit_local_query = bool(local_query) and not set(local_query.split()).issubset(
+            reference_words
+        )
+        ai.busqueda = local.busqueda if has_explicit_local_query else (ai.busqueda or local.busqueda)
+        # Solo se aplica una marca estricta cuando el usuario la escribió explícitamente.
+        # Inferir Apple desde "iPhone" excluiría accesorios compatibles de otras marcas.
+        ai.marca = local.marca
+        ai.categoria = local.categoria or ai.categoria
         ai.precio_minimo = ai.precio_minimo if ai.precio_minimo is not None else local.precio_minimo
         ai.precio_maximo = ai.precio_maximo if ai.precio_maximo is not None else local.precio_maximo
         ai.ordenar_por_menor_precio = ai.ordenar_por_menor_precio or local.ordenar_por_menor_precio
         ai.productos_comparacion = ai.productos_comparacion or local.productos_comparacion
+        ai.cantidad = local.cantidad or ai.cantidad
         return ai
 
     @staticmethod
@@ -276,8 +373,7 @@ class ChatService:
         result = rank_catalog_products(products, analysis)
         if analysis.marca:
             brand = normalize(analysis.marca)
-            branded = [product for product in result if normalize(product.marca) == brand]
-            result = branded or result
+            result = [product for product in result if normalize(product.marca) == brand]
         if analysis.precio_minimo is not None:
             result = [
                 product
@@ -316,29 +412,95 @@ class ChatService:
         return None
 
     @staticmethod
+    def _referenced_product_from_history(message: str, history: list[Any]) -> str | None:
+        normalized_message = normalize(message)
+        ordinal_positions = {
+            "primero": 0,
+            "primera": 0,
+            "segundo": 1,
+            "segunda": 1,
+            "tercero": 2,
+            "tercera": 2,
+        }
+        position = next(
+            (index for word, index in ordinal_positions.items() if contains_any(normalized_message, word)),
+            None,
+        )
+        if position is None:
+            return None
+
+        for item in reversed(history):
+            if getattr(item, "rol", "") not in {"asistente", "assistant"}:
+                continue
+            content = getattr(item, "contenido", "")
+            names = [value.strip() for value in re.findall(r"\*\*([^*\n]{3,180})\*\*", content)]
+            if not names:
+                names = [
+                    match.group(1).strip()
+                    for line in content.splitlines()
+                    if (
+                        match := re.match(
+                            r"\s*[•-]\s*([^:—\n]{3,180}?)(?=\s*(?::|—|$))",
+                            line,
+                        )
+                    )
+                ]
+            if position < len(names):
+                return names[position]
+        return None
+
+    @staticmethod
     def _is_location_only_followup(analysis: QueryAnalysis) -> bool:
         query = normalize(analysis.busqueda)
         return not query or query in {"si", "tiene", "producto", "productos"}
 
     @staticmethod
     def _missing_support_parameter(analysis: QueryAnalysis) -> str | None:
-        if analysis.intencion == IntentType.CONSULTAR_PEDIDO and not (
-            analysis.order_id or analysis.document_number
-        ):
-            return "Indícame el número de pedido o tu DNI/RUC/CEX para consultar su estado."
-        if analysis.intencion == IntentType.CONSULTAR_DEVOLUCION_DINERO and not (
-            analysis.credit_note or analysis.document_number
-        ):
-            return "Indícame la nota de crédito o tu DNI/RUC/CEX para consultar la devolución."
-        if analysis.intencion == IntentType.CONSULTAR_EXTORNO and not (
-            analysis.order_id or analysis.document_number
-        ):
-            return "Indícame el número de pedido o tu DNI/RUC/CEX para consultar el extorno."
-        if analysis.intencion == IntentType.CONSULTAR_ORDEN_SERVICIO and not (
-            analysis.service_order or analysis.document_number
-        ):
-            return "Indícame la ODS o tu DNI/RUC/CEX para consultar la orden de servicio."
+        requirements = {
+            IntentType.CONSULTAR_PEDIDO: (
+                analysis.order_id,
+                "número de pedido",
+                analysis.document_number,
+            ),
+            IntentType.CONSULTAR_DEVOLUCION_DINERO: (
+                analysis.credit_note,
+                "nota de crédito",
+                analysis.document_number,
+            ),
+            IntentType.CONSULTAR_EXTORNO: (
+                analysis.order_id,
+                "número de pedido",
+                analysis.document_number,
+            ),
+            IntentType.CONSULTAR_ORDEN_SERVICIO: (
+                analysis.service_order,
+                "ODS",
+                analysis.document_number,
+            ),
+        }
+        if analysis.intencion in requirements:
+            reference, reference_name, document = requirements[analysis.intencion]
+            if not reference and not document:
+                return f"Indícame el {reference_name} y tu DNI/RUC/CEX para validar la consulta."
+            if not reference:
+                return f"Indícame también el {reference_name} para validar la consulta."
+            if not document:
+                return "Indícame también tu DNI/RUC/CEX para validar la consulta."
         return None
+
+    @staticmethod
+    def _same_identifier(first: Any, second: Any) -> bool:
+        left = re.sub(r"[^a-z0-9]", "", normalize(str(first or "")))
+        right = re.sub(r"[^a-z0-9]", "", normalize(str(second or "")))
+        return bool(left and right and left == right)
+
+    @classmethod
+    def _matching_items(
+        cls, items: list[dict[str, Any]], expected: str | None, *keys: str
+    ) -> list[dict[str, Any]]:
+        if not expected:
+            return []
+        return [item for item in items if any(cls._same_identifier(item.get(key), expected) for key in keys)]
 
     def _support_answer(self, intent: IntentType, response: CoolboxResponse) -> str:
         if intent == IntentType.CONSULTAR_PEDIDO:
@@ -406,11 +568,7 @@ class ChatService:
         if intent == IntentType.CONSULTAR_STOCK:
             lines = ["Disponibilidad general del catálogo:"]
             for product in products[:3]:
-                status = (
-                    f"{product.stock_disponible} unidades"
-                    if product.disponible and product.stock_disponible is not None
-                    else "sin stock disponible"
-                )
+                status = "disponible en tienda online" if product.disponible else "sin stock disponible"
                 lines.append(f"• {product.nombre}: {status}")
             return "\n".join(lines)
         product = products[0]

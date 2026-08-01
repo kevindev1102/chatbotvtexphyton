@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from openai import AsyncOpenAI
 
@@ -10,6 +11,14 @@ from app.errors import ExternalServiceError
 from app.models import HistoryMessage, Product, QueryAnalysis
 
 logger = logging.getLogger(__name__)
+
+SUPPORT_OR_PII_PATTERN = re.compile(
+    r"\b(?:dni|ruc|cex|documento|pedido|orden\s+de\s+servicio|nota\s+de\s+credito|"
+    r"devolucion|extorno|reembolso|ods)\b|\b\d{8,11}\b|\b[a-z0-9-]*\d{10,}[a-z0-9-]*-\d{2}\b",
+    re.IGNORECASE,
+)
+EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+PHONE_PATTERN = re.compile(r"(?<!\d)(?:\+?51\s*)?9\d{8}(?!\d)")
 
 ANALYSIS_PROMPT = """
 Analiza el último mensaje de un cliente de una tienda de tecnología usando el historial.
@@ -39,6 +48,7 @@ Reglas obligatorias:
 - No incluyas enlaces.
 - Prioriza productos disponibles, evita duplicados y muestra como máximo 3.
 - Cada producto ocupa una sola viñeta con nombre, precio y un dato clave.
+- Presenta precios en soles con el formato "S/ 1.499,00", nunca como "1499.0 PEN".
 - No superes 10 líneas. Usa de 0 a 2 emojis, solo si aportan naturalidad.
 - Si falta el dato solicitado, dilo claramente.
 - Termina con una pregunta corta solo cuando ayude a continuar.
@@ -122,4 +132,11 @@ class OpenAIService:
 
     @staticmethod
     def _history(history: list[HistoryMessage]) -> list[dict[str, str]]:
-        return [{"role": item.openai_role(), "content": item.contenido} for item in history[-10:]]
+        safe_history: list[dict[str, str]] = []
+        for item in history[-10:]:
+            if SUPPORT_OR_PII_PATTERN.search(item.contenido):
+                continue
+            content = EMAIL_PATTERN.sub("[correo omitido]", item.contenido)
+            content = PHONE_PATTERN.sub("[teléfono omitido]", content)
+            safe_history.append({"role": item.openai_role(), "content": content})
+        return safe_history

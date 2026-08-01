@@ -22,6 +22,32 @@ ACCESSORY_TERMS = {
     "vidrio",
 }
 
+GAME_TERMS = {"juego", "juegos", "videojuego", "videojuegos", "gaming software"}
+MAIN_DEVICE_CATEGORY_TERMS = {
+    "celular",
+    "smartphone",
+    "tablet",
+    "laptop",
+    "consola",
+    "televisor",
+    "impresora",
+}
+ACCESSORY_CATEGORY_TERMS = {
+    "accesorio",
+    "cable",
+    "cargador",
+    "case",
+    "estuche",
+    "funda",
+    "protector",
+}
+
+ACCESSORY_MATCH_TERMS: dict[str, set[str]] = {
+    "cargador": {"cargador", "cubo de carga", "adaptador de corriente"},
+    "funda": {"funda", "folio cover"},
+    "audifono": {"audifono", "headphone", "earbuds"},
+}
+
 FAMILY_TERMS: dict[str, set[str]] = {
     "celular": {"celular", "smartphone", "telefono movil", "iphone", "galaxy"},
     "tablet": {"tablet", "ipad"},
@@ -58,7 +84,12 @@ QUERY_NOISE = {
 
 
 def _contains_term(text: str, term: str) -> bool:
-    return f" {term} " in f" {text} "
+    padded = f" {text} "
+    if f" {term} " in padded:
+        return True
+    if " " not in term:
+        return any(f" {variant} " in padded for variant in (f"{term}s", f"{term}es"))
+    return False
 
 
 def _requested_family(analysis: QueryAnalysis, query: str) -> str | None:
@@ -88,6 +119,7 @@ def rank_catalog_products(products: list[Product], analysis: QueryAnalysis) -> l
     family = _requested_family(analysis, query)
     specific_terms = _specific_terms(query)
     accessory_request = _is_accessory(query)
+    requested_accessories = [term for term in ACCESSORY_TERMS if _contains_term(query, term)]
     query_tokens = {
         token
         for token in query.split()
@@ -98,10 +130,43 @@ def rank_catalog_products(products: list[Product], analysis: QueryAnalysis) -> l
     for product in products:
         name = normalize(product.nombre)
         categories = normalize(" ".join(product.categorias))
+        description = normalize(product.descripcion)
+        brand = normalize(product.marca)
+        product_text = f"{name} {categories} {description}"
 
         if family and not accessory_request and not _matches_family(product, family):
             continue
-        if specific_terms and not all(_contains_term(name, term) for term in specific_terms):
+        if family == "consola" and any(_contains_term(categories, term) for term in GAME_TERMS):
+            continue
+        if family == "consola" and _contains_term(categories, "accesorio"):
+            continue
+        if specific_terms:
+            target_brands = {
+                "iphone": "apple",
+                "ipad": "apple",
+                "macbook": "apple",
+                "galaxy": "samsung",
+                "playstation": "sony",
+                "ps5": "sony",
+                "xbox": "microsoft",
+            }
+            matches_specific = all(
+                _contains_term(product_text, term) or brand == target_brands.get(term)
+                for term in specific_terms
+            )
+            if not matches_specific:
+                continue
+        if requested_accessories and not any(
+            any(
+                _contains_term(product_text, candidate)
+                for candidate in ACCESSORY_MATCH_TERMS.get(term, {term})
+            )
+            for term in requested_accessories
+        ):
+            continue
+        is_main_device_category = any(_contains_term(categories, term) for term in MAIN_DEVICE_CATEGORY_TERMS)
+        is_accessory_category = any(_contains_term(categories, term) for term in ACCESSORY_CATEGORY_TERMS)
+        if accessory_request and is_main_device_category and not is_accessory_category:
             continue
         if (family or specific_terms) and not accessory_request and _is_accessory(name):
             continue

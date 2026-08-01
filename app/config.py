@@ -62,6 +62,8 @@ class Settings:
     coolbox_password: str
     connect_timeout_seconds: float
     response_timeout_seconds: float
+    rate_limit_requests: int = 30
+    rate_limit_window_seconds: int = 60
 
     @classmethod
     def load(cls) -> Settings:
@@ -99,4 +101,6 @@ class Settings:
             coolbox_password=value("COOLBOX_WEB_API_PASSWORD", "coolbox.web-api.password"),
             connect_timeout_seconds=connect_seconds,
             response_timeout_seconds=response_seconds,
+            rate_limit_requests=int(env.get("RATE_LIMIT_REQUESTS", "30")),
+            rate_limit_window_seconds=int(env.get("RATE_LIMIT_WINDOW_SECONDS", "60")),
         )

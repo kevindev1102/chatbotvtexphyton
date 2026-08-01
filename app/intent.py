@@ -20,7 +20,6 @@ KNOWN_BRANDS = {
     "huawei",
     "honor",
     "nintendo",
-    "playstation",
     "epson",
     "canon",
     "logitech",

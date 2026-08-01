@@ -21,6 +21,9 @@ App Platform construye el `Dockerfile`, publica HTTPS automáticamente y reinici
 
 El archivo `deploy/digitalocean-app.yaml.example` contiene la misma configuración como plantilla declarativa. Sustituye el repositorio y carga los valores secretos desde el panel; no confirmes secretos reales en ese archivo.
 
+El chat aplica un límite inicial de 30 solicitudes por minuto e IP. Ajusta
+`RATE_LIMIT_REQUESTS` y `RATE_LIMIT_WINDOW_SECONDS` según el tráfico real.
+
 ## Alternativa: Droplet con Docker Compose
 
 Usa una Droplet Ubuntu con Docker instalado y permite TCP 8080 en el firewall solo durante la prueba inicial.
@@ -43,7 +46,10 @@ git pull --ff-only
 docker compose up -d --build
 ```
 
-En producción, coloca un proxy HTTPS (por ejemplo Caddy o Nginx) delante del puerto 8080 y después retira el acceso público directo a ese puerto mediante DigitalOcean Cloud Firewall. App Platform ya resuelve HTTPS y el enrutamiento, por eso es la opción más sencilla.
+En producción, coloca un proxy HTTPS (por ejemplo Caddy o Nginx) delante del puerto 8080. El
+`compose.yaml` publica el servicio únicamente en `127.0.0.1`, por lo que Nginx puede acceder pero
+el puerto no queda expuesto directamente a Internet. App Platform ya resuelve HTTPS y el
+enrutamiento, por eso es la opción más sencilla.
 
 ## Prueba funcional
 

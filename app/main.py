@@ -13,6 +13,7 @@ from app.config import Settings
 from app.errors import ExternalServiceError
 from app.intent import IntentService
 from app.models import ChatRequest, ChatResponse
+from app.rate_limit import ChatRateLimitMiddleware
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,9 +23,11 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
+settings = Settings.load()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = Settings.load()
     ai = OpenAIService(settings)
     vtex = VtexClient(settings)
     coolbox = CoolboxClient(settings)
@@ -41,6 +44,11 @@ app = FastAPI(
     version="1.0.0",
     description="API compatible con el chatbot Spring Boot, migrada a Python/FastAPI.",
     lifespan=lifespan,
+)
+app.add_middleware(
+    ChatRateLimitMiddleware,
+    max_requests=settings.rate_limit_requests,
+    window_seconds=settings.rate_limit_window_seconds,
 )
 
 

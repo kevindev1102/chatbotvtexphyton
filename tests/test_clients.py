@@ -1,6 +1,6 @@
 import httpx
 
-from app.clients import VtexClient
+from app.clients import CoolboxClient, VtexClient
 from app.config import Settings
 from app.models import Product, SkuOffer
 
@@ -111,3 +111,25 @@ async def test_maps_pickup_stores_from_checkout_simulation() -> None:
     assert stores[0].nombre == "Coolbox Miraflores"
     assert stores[0].direccion == "Av. Larco 628"
     assert stores[0].distancia_km == 0.25
+
+
+async def test_coolbox_refreshes_token_after_unauthorized_response() -> None:
+    login_count = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal login_count
+        if request.url.path == "/api/Auth/login":
+            login_count += 1
+            return httpx.Response(200, json={"token": f"token-{login_count}"})
+        if request.headers.get("Authorization") == "Bearer token-1":
+            return httpx.Response(401, json={"message": "expired"})
+        return httpx.Response(200, json={"result": True, "pedidos": [{"numero": "123"}]})
+
+    client = CoolboxClient(settings(), transport=httpx.MockTransport(handler))
+    try:
+        response = await client.orders_by_number("123")
+    finally:
+        await client.close()
+
+    assert response.result is True
+    assert login_count == 2

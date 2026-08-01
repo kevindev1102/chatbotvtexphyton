@@ -69,3 +69,15 @@ services:
         value: "15"
         scope: RUN_TIME
         type: GENERAL
+      - key: RATE_LIMIT_REQUESTS
+        value: "30"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+        scope: RUN_TIME
+        type: GENERAL

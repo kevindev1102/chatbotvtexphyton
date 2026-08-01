@@ -3,7 +3,15 @@ from unittest.mock import AsyncMock
 from app.chat import ChatService
 from app.errors import ExternalServiceError
 from app.intent import IntentService
-from app.models import ChatRequest, CoolboxResponse, HistoryMessage, IntentType, PickupStore, Product
+from app.models import (
+    ChatRequest,
+    CoolboxResponse,
+    HistoryMessage,
+    IntentType,
+    PickupStore,
+    Product,
+    QueryAnalysis,
+)
 
 
 def service() -> tuple[ChatService, AsyncMock, AsyncMock, AsyncMock]:
@@ -16,7 +24,7 @@ def service() -> tuple[ChatService, AsyncMock, AsyncMock, AsyncMock]:
 async def test_order_query_is_routed_locally_without_ai() -> None:
     chat, vtex, coolbox, ai = service()
     vtex.can_query_orders = False
-    coolbox.orders_by_number.return_value = CoolboxResponse.model_validate(
+    coolbox.orders_by_document.return_value = CoolboxResponse.model_validate(
         {
             "result": True,
             "pedidos": [
@@ -29,12 +37,15 @@ async def test_order_query_is_routed_locally_without_ai() -> None:
         }
     )
 
-    response = await chat.process(ChatRequest(mensaje="¿Dónde está mi pedido 1234567890123-01?"))
+    response = await chat.process(
+        ChatRequest(mensaje="¿Dónde está mi pedido 1234567890123-01? Mi DNI es 62022494")
+    )
 
     assert response.intencion == IntentType.CONSULTAR_PEDIDO
     assert "En ruta" in response.respuesta
     ai.analyze.assert_not_awaited()
     ai.answer.assert_not_awaited()
+    coolbox.orders_by_document.assert_awaited_once_with("62022494")
 
 
 async def test_order_number_uses_vtex_oms_when_credentials_are_available() -> None:
@@ -46,10 +57,13 @@ async def test_order_number_uses_vtex_oms_when_credentials_are_available() -> No
         "statusDescription": "Preparando entrega",
         "creationDate": "2026-07-30T12:00:00Z",
         "items": [{"name": "Audífonos Bluetooth"}],
+        "clientProfileData": {"document": "62022494"},
         "shippingData": {"logisticsInfo": [{"shippingEstimateDate": "2026-08-01T18:00:00Z"}]},
     }
 
-    response = await chat.process(ChatRequest(mensaje="¿Dónde está mi pedido 1234567890123-01?"))
+    response = await chat.process(
+        ChatRequest(mensaje="¿Dónde está mi pedido 1234567890123-01? Mi DNI es 62022494")
+    )
 
     assert response.intencion == IntentType.CONSULTAR_PEDIDO
     assert "Preparando entrega" in response.respuesta
@@ -57,6 +71,31 @@ async def test_order_number_uses_vtex_oms_when_credentials_are_available() -> No
     vtex.get_order.assert_awaited_once_with("1234567890123-01")
     coolbox.orders_by_number.assert_not_awaited()
     ai.analyze.assert_not_awaited()
+
+
+async def test_order_query_requires_document_and_order_number() -> None:
+    chat, vtex, coolbox, ai = service()
+    vtex.can_query_orders = True
+
+    response = await chat.process(ChatRequest(mensaje="¿Dónde está mi pedido 1234567890123-01?"))
+
+    assert "DNI/RUC/CEX" in response.respuesta
+    vtex.get_order.assert_not_awaited()
+    coolbox.orders_by_document.assert_not_awaited()
+    ai.analyze.assert_not_awaited()
+
+
+async def test_vtex_order_rejects_mismatched_document() -> None:
+    chat, vtex, _, _ = service()
+    vtex.can_query_orders = True
+    vtex.get_order.return_value = {
+        "orderId": "1234567890123-01",
+        "clientProfileData": {"document": "11111111"},
+    }
+
+    response = await chat.process(ChatRequest(mensaje="Pedido 1234567890123-01 con DNI 62022494"))
+
+    assert "No pude validar" in response.respuesta
 
 
 async def test_store_stock_limitation_does_not_call_dependencies() -> None:
@@ -154,6 +193,8 @@ async def test_generic_iphone_query_excludes_accessories() -> None:
     assert response.intencion == IntentType.CONSULTAR_STOCK
     assert "Apple iPhone 15" in response.respuesta
     assert "Cable Lightning" not in response.respuesta
+    assert "unidades" not in response.respuesta
+    assert "disponible en tienda online" in response.respuesta
 
 
 async def test_location_only_followup_reuses_product_from_history() -> None:
@@ -186,3 +227,82 @@ async def test_location_only_followup_reuses_product_from_history() -> None:
         latitude=-12.0464,
         longitude=-77.0428,
     )
+
+
+async def test_ordinal_followup_uses_product_named_by_assistant() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    product = Product(nombre="iPad Mini 128GB", precio=2200, disponible=True)
+    vtex.search.return_value = [product]
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="¿Cuánto cuesta el segundo?",
+            historial=[
+                HistoryMessage(
+                    rol="asistente",
+                    contenido="- **iPad 11 128GB**: S/ 1.499,00\n- **iPad Mini 128GB**: S/ 2.200,00",
+                )
+            ],
+        )
+    )
+
+    assert response.intencion == IntentType.CONSULTAR_PRECIO
+    assert "iPad Mini 128GB" in response.respuesta
+    assert response.respuesta.count("•") == 1
+    vtex.search.assert_awaited_once_with("ipad mini 128gb", order_by=None)
+
+
+def test_explicit_brand_filter_never_falls_back_to_other_brands() -> None:
+    products = [
+        Product(nombre="Smart TV LG", marca="LG", categorias=["/Televisores/"], disponible=True),
+        Product(
+            nombre="Smart TV Samsung",
+            marca="Samsung",
+            categorias=["/Televisores/"],
+            disponible=True,
+        ),
+    ]
+    analysis = QueryAnalysis(
+        intencion=IntentType.BUSCAR_POR_MARCA,
+        busqueda="televisor samsung",
+        marca="samsung",
+        categoria="televisor",
+    )
+
+    result = ChatService._filter_products(products, analysis)
+
+    assert [item.nombre for item in result] == ["Smart TV Samsung"]
+
+
+def test_local_explicit_query_wins_over_ai_plural_rewrite() -> None:
+    local = QueryAnalysis(
+        intencion=IntentType.CONSULTAR_STOCK,
+        busqueda="laptop lenovo",
+        marca="lenovo",
+        categoria="laptop",
+    )
+    ai = QueryAnalysis(
+        intencion=IntentType.LISTAR_POR_CATEGORIA,
+        busqueda="laptops",
+        marca="lenovo",
+        categoria="laptop",
+    )
+
+    merged = ChatService._merge_analysis(ai, local)
+
+    assert merged.busqueda == "laptop lenovo"
+
+
+async def test_category_search_adds_broad_fallback_for_vtex() -> None:
+    chat, vtex, _, _ = service()
+    vtex.search_many.return_value = []
+    analysis = QueryAnalysis(
+        intencion=IntentType.CONSULTAR_STOCK,
+        busqueda="playstation 5",
+        categoria="consola",
+    )
+
+    await chat._catalog_products(analysis)
+
+    vtex.search_many.assert_awaited_once_with(["playstation 5", "playstation 5 consola", "consola"])

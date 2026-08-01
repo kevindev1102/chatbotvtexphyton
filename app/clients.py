@@ -284,14 +284,26 @@ class CoolboxClient(BaseHttpClient):
     async def _get(self, path: str, name: str, value: str | None) -> CoolboxResponse:
         if not value:
             raise ExternalServiceError("Falta el parámetro requerido para consultar Web API Coolbox")
-        token = await self._get_token()
-        response = await self._request(
-            "GET",
-            path,
-            params={name: value.strip()},
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        return CoolboxResponse.model_validate(response.json())
+        for attempt in range(2):
+            token = await self._get_token()
+            try:
+                response = await self._request(
+                    "GET",
+                    path,
+                    params={name: value.strip()},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                return CoolboxResponse.model_validate(response.json())
+            except ExternalServiceError as error:
+                cause = error.__cause__
+                unauthorized = isinstance(cause, httpx.HTTPStatusError) and cause.response.status_code == 401
+                if not unauthorized or attempt == 1:
+                    raise
+                async with self._token_lock:
+                    if self._token == token:
+                        self._token = None
+                        self._token_expires_at = datetime.min.replace(tzinfo=UTC)
+        raise ExternalServiceError("No fue posible renovar la autenticación de Web API Coolbox")
 
     async def _get_token(self) -> str:
         if self._token and datetime.now(UTC) < self._token_expires_at:
