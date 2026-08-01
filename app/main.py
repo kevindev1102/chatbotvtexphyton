@@ -68,7 +68,7 @@ async def health(request: Request) -> dict[str, object]:
     }
 
 
-@app.post("/api/chat", response_model=ChatResponse)
+@app.post("/api/chat", response_model=ChatResponse, response_model_exclude_none=True)
 async def chat(payload: ChatRequest, request: Request) -> ChatResponse:
     service: ChatService = request.app.state.chat_service
     return await service.process(payload)

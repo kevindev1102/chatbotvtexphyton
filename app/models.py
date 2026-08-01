@@ -85,21 +85,10 @@ class ChatRequest(BaseModel):
         return value.strip()
 
 
-class ProductCard(BaseModel):
-    id: str | None = None
-    nombre: str
-    marca: str | None = None
-    precio: float | None = None
-    moneda: str | None = None
-    disponible: bool = False
-    imagen_url: str | None = Field(default=None, alias="imagenUrl")
-    url_producto: str | None = Field(default=None, alias="urlProducto")
-
-
 class ChatResponse(BaseModel):
     respuesta: str
     intencion: IntentType
-    productos: list[ProductCard] = Field(default_factory=list)
+    imagen: str | None = None
 
 
 class QueryAnalysis(BaseModel):
@@ -161,7 +150,6 @@ class Product(BaseModel):
     stock_disponible: int | None = None
     disponible: bool = False
     imagen_url: str | None = Field(default=None, exclude=True)
-    url_producto: str | None = Field(default=None, exclude=True)
     categorias: list[str] = Field(default_factory=list)
     caracteristicas: dict[str, list[str]] = Field(default_factory=dict)
     sku_offers: list[SkuOffer] = Field(default_factory=list, exclude=True)

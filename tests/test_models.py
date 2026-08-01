@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.models import ChatRequest, ChatResponse, IntentType, ProductCard
+from app.models import ChatRequest, ChatResponse, IntentType
 
 
 def test_accepts_compatible_java_payload() -> None:
@@ -38,20 +38,15 @@ def test_accepts_optional_geolocation() -> None:
     assert request.ubicacion.longitud == -77.03
 
 
-def test_product_cards_serialize_with_widget_friendly_aliases() -> None:
+def test_optional_image_keeps_original_response_shape_when_absent() -> None:
     response = ChatResponse(
         respuesta="Encontré un producto",
         intencion=IntentType.BUSCAR_PRODUCTO,
-        productos=[
-            ProductCard(
-                nombre="Producto",
-                imagenUrl="https://cdn.example.test/image.jpg",
-                urlProducto="https://www.example.test/producto/p",
-            )
-        ],
     )
 
-    payload = response.model_dump(mode="json", by_alias=True)
+    payload = response.model_dump(mode="json", exclude_none=True)
 
-    assert payload["productos"][0]["imagenUrl"] == "https://cdn.example.test/image.jpg"
-    assert payload["productos"][0]["urlProducto"] == "https://www.example.test/producto/p"
+    assert payload == {
+        "respuesta": "Encontré un producto",
+        "intencion": "BUSCAR_PRODUCTO",
+    }

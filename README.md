@@ -115,24 +115,14 @@ Respuesta:
 {
   "respuesta": "📦 Disponibilidad general del catálogo: ...",
   "intencion": "CONSULTAR_STOCK",
-  "productos": [
-    {
-      "id": "123",
-      "nombre": "Apple iPhone 15 128GB",
-      "marca": "Apple",
-      "precio": 2999.0,
-      "moneda": "PEN",
-      "disponible": true,
-      "imagenUrl": "https://.../iphone-15.jpg",
-      "urlProducto": "https://.../iphone-15/p"
-    }
-  ]
+  "imagen": "https://coolboxpe.vteximg.com.br/.../iphone-15.jpg"
 }
 ```
 
-`productos` es una lista opcional para que el widget pueda mostrar tarjetas con imagen,
-precio y un botón hacia la ficha. En consultas generales o de soporte se devuelve vacía.
-Los campos `respuesta` e `intencion` se mantienen sin cambios para conservar compatibilidad.
+`imagen` solo aparece cuando se consulta un producto concreto. Se envía una única imagen y
+no vuelve a incluirse si el producto ya apareció en una respuesta previa del historial. En
+consultas generales, de soporte o seguimientos del mismo producto, la respuesta conserva
+únicamente `respuesta` e `intencion`.
 
 El historial es opcional, admite hasta 10 mensajes y acepta los roles
 `usuario`/`asistente` o `user`/`assistant`.

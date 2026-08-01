@@ -187,7 +187,6 @@ async def test_generic_iphone_query_excludes_accessories() -> None:
             disponible=True,
             stock_disponible=4,
             imagen_url="https://cdn.example.test/iphone-15.jpg",
-            url_producto="https://www.example.test/iphone-15/p",
         ),
     ]
 
@@ -198,9 +197,7 @@ async def test_generic_iphone_query_excludes_accessories() -> None:
     assert "Cable Lightning" not in response.respuesta
     assert "unidades" not in response.respuesta
     assert "disponible en tienda online" in response.respuesta
-    assert len(response.productos) == 1
-    assert response.productos[0].imagen_url == "https://cdn.example.test/iphone-15.jpg"
-    assert response.productos[0].url_producto == "https://www.example.test/iphone-15/p"
+    assert response.imagen is None
 
 
 async def test_greeting_before_iphone_query_returns_phones() -> None:
@@ -218,6 +215,60 @@ async def test_greeting_before_iphone_query_returns_phones() -> None:
 
     assert "Apple iPhone 15" in response.respuesta
     vtex.search.assert_awaited_once_with("iphone", order_by=None)
+
+
+async def test_specific_product_query_returns_only_one_image() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    vtex.search.return_value = [
+        Product(
+            nombre="Apple iPhone 15 128GB",
+            marca="Apple",
+            categorias=["/Celulares y Smartphones/"],
+            precio=2999,
+            disponible=True,
+            imagen_url="https://cdn.example.test/iphone-15.jpg",
+        ),
+        Product(
+            nombre="Apple iPhone 15 256GB",
+            marca="Apple",
+            categorias=["/Celulares y Smartphones/"],
+            precio=3499,
+            disponible=True,
+            imagen_url="https://cdn.example.test/iphone-15-256.jpg",
+        ),
+    ]
+
+    response = await chat.process(ChatRequest(mensaje="¿Cuánto cuesta el iPhone 15?"))
+
+    assert response.imagen == "https://cdn.example.test/iphone-15.jpg"
+
+
+async def test_specific_product_image_is_not_repeated_when_already_in_history() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    product = Product(
+        nombre="Apple iPhone 15 128GB",
+        marca="Apple",
+        categorias=["/Celulares y Smartphones/"],
+        disponible=True,
+        imagen_url="https://cdn.example.test/iphone-15.jpg",
+    )
+    vtex.search.return_value = [product]
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="¿Qué características tiene el iPhone 15?",
+            historial=[
+                HistoryMessage(
+                    rol="asistente",
+                    contenido="El Apple iPhone 15 128GB está disponible en tienda online.",
+                )
+            ],
+        )
+    )
+
+    assert response.imagen is None
 
 
 async def test_location_only_followup_reuses_product_from_history() -> None:

@@ -18,7 +18,6 @@ from app.models import (
     IntentType,
     LocationAvailability,
     Product,
-    ProductCard,
     QueryAnalysis,
 )
 from app.relevance import ACCESSORY_TERMS, rank_catalog_products
@@ -150,7 +149,7 @@ class ChatService:
                     availability,
                     named_location.name if named_location else None,
                 ),
-                productos=self._product_cards([selected_product]),
+                imagen=self._single_product_image([selected_product], analysis, history),
             )
 
         if analysis.intencion in {
@@ -167,7 +166,7 @@ class ChatService:
         return ChatResponse(
             respuesta=answer,
             intencion=analysis.intencion,
-            productos=self._product_cards(products),
+            imagen=self._single_product_image(products, analysis, history),
         )
 
     async def _process_support(
@@ -598,20 +597,30 @@ class ChatService:
         return "\n".join(lines)
 
     @staticmethod
-    def _product_cards(products: list[Product], limit: int = 3) -> list[ProductCard]:
-        return [
-            ProductCard(
-                id=product.id,
-                nombre=product.nombre,
-                marca=product.marca,
-                precio=float(product.precio) if product.precio is not None else None,
-                moneda=product.moneda,
-                disponible=product.disponible,
-                imagenUrl=product.imagen_url,
-                urlProducto=product.url_producto,
-            )
-            for product in products[:limit]
-        ]
+    def _single_product_image(
+        products: list[Product], analysis: QueryAnalysis, history: list[Any]
+    ) -> str | None:
+        if not products or not products[0].imagen_url:
+            return None
+
+        query = normalize(analysis.busqueda)
+        query_tokens = query.split()
+        product_name = normalize(products[0].nombre)
+        is_specific = (
+            any(character.isdigit() for character in query)
+            or len(query_tokens) >= 3
+            or (len(query_tokens) >= 2 and query in product_name)
+        )
+        if not is_specific:
+            return None
+
+        for item in history:
+            if getattr(item, "rol", "") not in {"asistente", "assistant"}:
+                continue
+            previous_answer = normalize(getattr(item, "contenido", ""))
+            if product_name in previous_answer or (query and query in previous_answer):
+                return None
+        return products[0].imagen_url
 
     def _location_availability_answer(
         self,
