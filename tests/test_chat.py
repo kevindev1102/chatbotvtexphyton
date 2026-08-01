@@ -24,7 +24,7 @@ def service() -> tuple[ChatService, AsyncMock, AsyncMock, AsyncMock]:
 async def test_order_query_is_routed_locally_without_ai() -> None:
     chat, vtex, coolbox, ai = service()
     vtex.can_query_orders = False
-    coolbox.orders_by_document.return_value = CoolboxResponse.model_validate(
+    coolbox.orders_by_number.return_value = CoolboxResponse.model_validate(
         {
             "result": True,
             "pedidos": [
@@ -37,15 +37,13 @@ async def test_order_query_is_routed_locally_without_ai() -> None:
         }
     )
 
-    response = await chat.process(
-        ChatRequest(mensaje="¿Dónde está mi pedido 1234567890123-01? Mi DNI es 62022494")
-    )
+    response = await chat.process(ChatRequest(mensaje="¿Dónde está mi pedido 1234567890123-01?"))
 
     assert response.intencion == IntentType.CONSULTAR_PEDIDO
     assert "En ruta" in response.respuesta
     ai.analyze.assert_not_awaited()
     ai.answer.assert_not_awaited()
-    coolbox.orders_by_document.assert_awaited_once_with("62022494")
+    coolbox.orders_by_number.assert_awaited_once_with("1234567890123-01")
 
 
 async def test_order_number_uses_vtex_oms_when_credentials_are_available() -> None:
@@ -61,9 +59,7 @@ async def test_order_number_uses_vtex_oms_when_credentials_are_available() -> No
         "shippingData": {"logisticsInfo": [{"shippingEstimateDate": "2026-08-01T18:00:00Z"}]},
     }
 
-    response = await chat.process(
-        ChatRequest(mensaje="¿Dónde está mi pedido 1234567890123-01? Mi DNI es 62022494")
-    )
+    response = await chat.process(ChatRequest(mensaje="¿Dónde está mi pedido 1234567890123-01?"))
 
     assert response.intencion == IntentType.CONSULTAR_PEDIDO
     assert "Preparando entrega" in response.respuesta
@@ -73,29 +69,29 @@ async def test_order_number_uses_vtex_oms_when_credentials_are_available() -> No
     ai.analyze.assert_not_awaited()
 
 
-async def test_order_query_requires_document_and_order_number() -> None:
+async def test_order_query_can_use_document_without_order_number() -> None:
     chat, vtex, coolbox, ai = service()
     vtex.can_query_orders = True
+    coolbox.orders_by_document.return_value = CoolboxResponse.model_validate(
+        {"result": True, "pedidos": [{"numero": "123-01", "estado": "Entregado"}]}
+    )
 
-    response = await chat.process(ChatRequest(mensaje="¿Dónde está mi pedido 1234567890123-01?"))
+    response = await chat.process(ChatRequest(mensaje="Consulta mis pedidos con DNI 62022494"))
 
-    assert "DNI/RUC/CEX" in response.respuesta
+    assert "Entregado" in response.respuesta
     vtex.get_order.assert_not_awaited()
-    coolbox.orders_by_document.assert_not_awaited()
+    coolbox.orders_by_document.assert_awaited_once_with("62022494")
     ai.analyze.assert_not_awaited()
 
 
-async def test_vtex_order_rejects_mismatched_document() -> None:
-    chat, vtex, _, _ = service()
-    vtex.can_query_orders = True
-    vtex.get_order.return_value = {
-        "orderId": "1234567890123-01",
-        "clientProfileData": {"document": "11111111"},
-    }
+async def test_order_query_without_identifier_requests_order_or_document() -> None:
+    chat, vtex, coolbox, _ = service()
 
-    response = await chat.process(ChatRequest(mensaje="Pedido 1234567890123-01 con DNI 62022494"))
+    response = await chat.process(ChatRequest(mensaje="Quiero consultar mi pedido"))
 
-    assert "No pude validar" in response.respuesta
+    assert "número de pedido o tu DNI/RUC/CEX" in response.respuesta
+    vtex.get_order.assert_not_awaited()
+    coolbox.orders_by_document.assert_not_awaited()
 
 
 async def test_store_stock_limitation_does_not_call_dependencies() -> None:

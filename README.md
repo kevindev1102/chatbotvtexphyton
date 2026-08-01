@@ -47,10 +47,10 @@ Las consultas de pedidos por número usan VTEX OMS cuando `VTEX_APP_KEY` y
 `VTEX_APP_TOKEN` están configurados. Las consultas por DNI/RUC/CEX y las órdenes
 de servicio (ODS) continúan utilizando Web API Coolbox/CIC.
 
-Por privacidad, las consultas de soporte requieren dos datos coincidentes: pedido y
-documento, nota de crédito y documento, u ODS y documento. El chatbot puede reunirlos
-en mensajes consecutivos mediante el historial. Los mensajes con identificadores de
-soporte, teléfonos o documentos no se envían a OpenAI.
+Las consultas de pedidos aceptan un número de pedido o un DNI/RUC/CEX. Las consultas de
+devoluciones, extornos y ODS requieren la referencia correspondiente junto con el documento.
+El chatbot puede reunir datos en mensajes consecutivos mediante el historial. Los mensajes
+con identificadores de soporte, teléfonos o documentos no se envían a OpenAI.
 
 El endpoint de chat limita por defecto cada IP a 30 solicitudes por minuto. Se puede
 ajustar con `RATE_LIMIT_REQUESTS` y `RATE_LIMIT_WINDOW_SECONDS`. En producción también

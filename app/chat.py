@@ -200,26 +200,14 @@ class ChatService:
             if analysis.intencion == IntentType.CONSULTAR_PEDIDO:
                 if analysis.order_id and self.vtex.can_query_orders:
                     order = await self.vtex.get_order(analysis.order_id)
-                    profile = order.get("clientProfileData") or {}
-                    if not self._same_identifier(profile.get("document"), analysis.document_number):
-                        return ChatResponse(
-                            intencion=analysis.intencion,
-                            respuesta=(
-                                "No pude validar el pedido con el documento indicado. "
-                                "Revisa ambos datos e intenta nuevamente."
-                            ),
-                        )
                     return ChatResponse(
                         intencion=analysis.intencion,
                         respuesta=self._vtex_order_answer(order),
                     )
-                response = await self.coolbox.orders_by_document(analysis.document_number or "")
-                response.pedidos = self._matching_items(
-                    response.pedidos,
-                    analysis.order_id,
-                    "numero",
-                    "pedido",
-                    "orderId",
+                response = (
+                    await self.coolbox.orders_by_number(analysis.order_id)
+                    if analysis.order_id
+                    else await self.coolbox.orders_by_document(analysis.document_number or "")
                 )
             elif analysis.intencion == IntentType.CONSULTAR_DEVOLUCION_DINERO:
                 response = await self.coolbox.refunds(analysis.document_number, None)
@@ -456,12 +444,11 @@ class ChatService:
 
     @staticmethod
     def _missing_support_parameter(analysis: QueryAnalysis) -> str | None:
+        if analysis.intencion == IntentType.CONSULTAR_PEDIDO:
+            if not (analysis.order_id or analysis.document_number):
+                return "Indícame el número de pedido o tu DNI/RUC/CEX para consultar su estado."
+            return None
         requirements = {
-            IntentType.CONSULTAR_PEDIDO: (
-                analysis.order_id,
-                "número de pedido",
-                analysis.document_number,
-            ),
             IntentType.CONSULTAR_DEVOLUCION_DINERO: (
                 analysis.credit_note,
                 "nota de crédito",
