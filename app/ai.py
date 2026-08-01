@@ -48,6 +48,8 @@ Reglas obligatorias:
 - No incluyas enlaces.
 - Prioriza productos disponibles, evita duplicados y muestra como máximo 3.
 - Cada producto ocupa una sola viñeta con nombre, precio y un dato clave.
+- Copia el nombre exacto del catálogo y escríbelo entre **doble asterisco**; no incluyas
+  características, colores agrupados ni precio dentro de los asteriscos.
 - Presenta precios en soles con el formato "S/ 1.499,00", nunca como "1499.0 PEN".
 - No superes 10 líneas. Usa de 0 a 2 emojis, solo si aportan naturalidad.
 - Si falta el dato solicitado, dilo claramente.

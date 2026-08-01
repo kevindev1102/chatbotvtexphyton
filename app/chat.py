@@ -429,19 +429,29 @@ class ChatService:
             content = getattr(item, "contenido", "")
             names = [value.strip() for value in re.findall(r"\*\*([^*\n]{3,180})\*\*", content)]
             if not names:
-                names = [
-                    match.group(1).strip()
-                    for line in content.splitlines()
-                    if (
-                        match := re.match(
-                            r"\s*[•-]\s*([^:—\n]{3,180}?)(?=\s*(?::|—|$))",
-                            line,
-                        )
-                    )
-                ]
+                names = ChatService._unformatted_product_names(content)
             if position < len(names):
                 return names[position]
         return None
+
+    @staticmethod
+    def _unformatted_product_names(content: str) -> list[str]:
+        names: list[str] = []
+        for line in content.splitlines():
+            match = re.match(r"\s*[•-]\s*(.{3,300})$", line)
+            if not match:
+                continue
+            candidate = match.group(1).strip()
+            # El modelo suele añadir precio al final de la viñeta. Ese texto nunca
+            # debe volver a VTEX como parte de la búsqueda del producto.
+            candidate = re.split(r"\s+(?:-|—)\s*S/\s*", candidate, maxsplit=1)[0]
+            candidate = candidate.split("—", 1)[0].split(":", 1)[0].strip()
+            # En respuestas antiguas las variantes se agrupaban entre paréntesis y
+            # luego venían características separadas por comas.
+            candidate = re.sub(r"\s*\([^)]*\)", "", candidate).split(",", 1)[0].strip()
+            if len(candidate) >= 3:
+                names.append(candidate)
+        return names
 
     @staticmethod
     def _is_location_only_followup(analysis: QueryAnalysis) -> bool:

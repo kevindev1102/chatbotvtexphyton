@@ -306,6 +306,39 @@ async def test_ordinal_followup_uses_product_named_by_assistant() -> None:
     vtex.search.assert_awaited_once_with("ipad mini 128gb", order_by=None)
 
 
+async def test_ordinal_followup_extracts_only_name_from_unformatted_sales_bullet() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    product = Product(
+        nombre="Audífonos Bluetooth JBL Live Flex 3",
+        marca="JBL",
+        disponible=True,
+        caracteristicas={"Cancelación de ruido": ["Sí"], "Autonomía": ["50 horas"]},
+    )
+    vtex.search.return_value = [product]
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="Sí, dame más características del segundo",
+            historial=[
+                HistoryMessage(
+                    rol="asistente",
+                    contenido=(
+                        "• JBL Live Buds 3, resistentes al agua IP55 - S/ 599,00\n"
+                        "• JBL Live Flex 3 (colores plateado, lila y azul), cancelación de ruido, "
+                        "Smart Case, hasta 50 horas de autonomía - S/ 599,00\n"
+                        "• JBL Wave Buds, resistentes al agua IP54 - S/ 129,00"
+                    ),
+                )
+            ],
+        )
+    )
+
+    assert response.intencion == IntentType.CONSULTAR_CARACTERISTICAS
+    assert "Cancelación de ruido" in response.respuesta
+    vtex.search.assert_awaited_once_with("jbl live flex 3", order_by=None)
+
+
 def test_explicit_brand_filter_never_falls_back_to_other_brands() -> None:
     products = [
         Product(nombre="Smart TV LG", marca="LG", categorias=["/Televisores/"], disponible=True),
