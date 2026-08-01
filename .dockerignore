@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+tests
+*.py[cod]
+*.log
+.DS_Store
+deploy
+compose*.yaml

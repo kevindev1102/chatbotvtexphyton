@@ -1,0 +1,20 @@
+services:
+  chatbot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chatbot-vtex-python:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "8080"
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

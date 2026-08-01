@@ -1,0 +1,71 @@
+name: chatbot-vtex
+region: nyc
+
+services:
+  - name: api
+    github:
+      repo: TU_USUARIO/TU_REPOSITORIO
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: Dockerfile
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    health_check:
+      http_path: /health
+      port: 8080
+      initial_delay_seconds: 20
+      period_seconds: 30
+      timeout_seconds: 5
+      failure_threshold: 3
+      success_threshold: 1
+    envs:
+      - key: PORT
+        value: "8080"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: OPENAI_API_KEY
+        value: CAMBIAR_EN_DIGITALOCEAN
+        scope: RUN_TIME
+        type: SECRET
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+        scope: RUN_TIME
+        type: GENERAL
+      - key: OPENAI_BASE_URL
+        value: https://api.openai.com/v1
+        scope: RUN_TIME
+        type: GENERAL
+      - key: VTEX_BASE_URL
+        value: https://coolboxpe.vtexcommercestable.com.br
+        scope: RUN_TIME
+        type: GENERAL
+      - key: VTEX_APP_KEY
+        value: CAMBIAR_EN_DIGITALOCEAN
+        scope: RUN_TIME
+        type: SECRET
+      - key: VTEX_APP_TOKEN
+        value: CAMBIAR_EN_DIGITALOCEAN
+        scope: RUN_TIME
+        type: SECRET
+      - key: COOLBOX_WEB_API_BASE_URL
+        value: CAMBIAR_EN_DIGITALOCEAN
+        scope: RUN_TIME
+        type: GENERAL
+      - key: COOLBOX_WEB_API_USERNAME
+        value: CAMBIAR_EN_DIGITALOCEAN
+        scope: RUN_TIME
+        type: SECRET
+      - key: COOLBOX_WEB_API_PASSWORD
+        value: CAMBIAR_EN_DIGITALOCEAN
+        scope: RUN_TIME
+        type: SECRET
+      - key: HTTP_CONNECT_TIMEOUT_SECONDS
+        value: "5"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: HTTP_RESPONSE_TIMEOUT_SECONDS
+        value: "15"
+        scope: RUN_TIME
+        type: GENERAL
