@@ -51,3 +51,11 @@ def test_phone_availability_wording_is_stock_intent() -> None:
 
     assert analysis.intencion == IntentType.CONSULTAR_STOCK
     assert analysis.busqueda == "celular iphone"
+
+
+def test_ipad_query_removes_conversational_noise() -> None:
+    analysis = IntentService().analyze("¿Qué iPads tienes en stock? Dime el modelo")
+
+    assert analysis.intencion == IntentType.CONSULTAR_STOCK
+    assert analysis.busqueda == "ipad"
+    assert analysis.categoria == "tablet"

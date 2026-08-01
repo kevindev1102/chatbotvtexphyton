@@ -116,6 +116,8 @@ FILLER_WORDS = {
     "casa",
     "esta",
     "dime",
+    "modelo",
+    "modelos",
     "venden",
     "quedan",
     "cueste",
@@ -346,13 +348,26 @@ class IntentService:
         category = next(
             (
                 category
-                for category in ("laptop", "celular", "tablet", "monitor", "televisor", "impresora", "audio")
+                for category in (
+                    "laptop",
+                    "celular",
+                    "tablet",
+                    "monitor",
+                    "televisor",
+                    "impresora",
+                    "consola",
+                    "audio",
+                )
                 if re.search(rf"\b{category}", normalized)
             ),
             None,
         )
         if re.search(r"\biphones?\b", normalized):
             category = "celular"
+        elif re.search(r"\bipads?\b", normalized):
+            category = "tablet"
+        elif re.search(r"\b(?:playstation|ps5|xbox|nintendo\s+switch)\b", normalized):
+            category = "consola"
         ambiguous = (
             not intent.is_support
             and intent

@@ -20,6 +20,7 @@ from app.models import (
     Product,
     QueryAnalysis,
 )
+from app.relevance import rank_catalog_products
 
 logger = logging.getLogger(__name__)
 
@@ -272,40 +273,7 @@ class ChatService:
 
     @staticmethod
     def _filter_products(products: list[Product], analysis: QueryAnalysis) -> list[Product]:
-        result = products
-        normalized_query = normalize(analysis.busqueda)
-        requests_iphone = "iphone" in normalized_query
-        requests_phone = analysis.categoria == "celular" or requests_iphone
-        if requests_phone:
-            accessory_terms = {
-                "adaptador",
-                "audifono",
-                "cable",
-                "cargador",
-                "case",
-                "correa",
-                "estuche",
-                "funda",
-                "lamina",
-                "mica",
-                "power bank",
-                "protector",
-                "soporte",
-                "vidrio",
-            }
-
-            def is_requested_phone(product: Product) -> bool:
-                name = normalize(product.nombre)
-                categories = normalize(" ".join(product.categorias))
-                is_accessory = any(term in name for term in accessory_terms)
-                if requests_iphone:
-                    return "iphone" in name and not is_accessory
-                is_phone_category = any(
-                    term in categories for term in ("celular", "smartphone", "telefono movil")
-                )
-                return is_phone_category and not is_accessory
-
-            result = [product for product in result if is_requested_phone(product)]
+        result = rank_catalog_products(products, analysis)
         if analysis.marca:
             brand = normalize(analysis.marca)
             branded = [product for product in result if normalize(product.marca) == brand]
@@ -329,7 +297,6 @@ class ChatService:
                 for product in result
                 if not any(excluded and excluded in normalize(product.nombre) for excluded in exclusions)
             ]
-        result.sort(key=lambda product: (not product.disponible, product.precio or Decimal("Infinity")))
         count = min(analysis.cantidad or 5, 5)
         return result[:count]
 
