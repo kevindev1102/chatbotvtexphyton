@@ -77,6 +77,11 @@ async def test_maps_pickup_stores_from_checkout_simulation() -> None:
                     {
                         "slas": [
                             {
+                                "deliveryChannel": "delivery",
+                                "name": "Envío express",
+                                "shippingEstimate": "4h",
+                            },
+                            {
                                 "deliveryChannel": "pickup-in-point",
                                 "pickupPointId": "store-1",
                                 "pickupDistance": 0.25,
@@ -111,6 +116,48 @@ async def test_maps_pickup_stores_from_checkout_simulation() -> None:
     assert stores[0].nombre == "Coolbox Miraflores"
     assert stores[0].direccion == "Av. Larco 628"
     assert stores[0].distancia_km == 0.25
+
+
+async def test_maps_home_delivery_and_pickup_from_checkout_simulation() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "logisticsInfo": [
+                    {
+                        "slas": [
+                            {
+                                "deliveryChannel": "delivery",
+                                "name": "Envío a domicilio",
+                                "shippingEstimate": "2bd",
+                            },
+                            {
+                                "deliveryChannel": "pickup-in-point",
+                                "pickupPointId": "store-1",
+                                "pickupStoreInfo": {"friendlyName": "Coolbox San Isidro"},
+                            },
+                        ]
+                    }
+                ]
+            },
+        )
+
+    client = VtexClient(settings(), transport=httpx.MockTransport(handler))
+    product = Product(
+        nombre="iPhone 17 Pro Max",
+        disponible=True,
+        sku_offers=[SkuOffer(sku_id="100", seller_id="marketplace", available_quantity=2)],
+    )
+    try:
+        availability = await client.location_availability(
+            product, latitude=-12.09, longitude=-77.03
+        )
+    finally:
+        await client.close()
+
+    assert availability.disponible_online is True
+    assert availability.opciones_envio[0].tiempo_entrega == "2bd"
+    assert availability.tiendas_recojo[0].nombre == "Coolbox San Isidro"
 
 
 async def test_coolbox_refreshes_token_after_unauthorized_response() -> None:

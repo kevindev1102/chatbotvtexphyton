@@ -127,6 +127,17 @@ class PickupStore(BaseModel):
     tiempo_recojo: str | None = None
 
 
+class DeliveryOption(BaseModel):
+    nombre: str
+    tiempo_entrega: str | None = None
+
+
+class LocationAvailability(BaseModel):
+    disponible_online: bool = False
+    opciones_envio: list[DeliveryOption] = Field(default_factory=list)
+    tiendas_recojo: list[PickupStore] = Field(default_factory=list)
+
+
 class Product(BaseModel):
     id: str | None = None
     nombre: str

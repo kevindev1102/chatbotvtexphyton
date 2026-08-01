@@ -10,7 +10,14 @@ import httpx
 
 from app.config import Settings
 from app.errors import ExternalServiceError
-from app.models import CoolboxResponse, PickupStore, Product, SkuOffer
+from app.models import (
+    CoolboxResponse,
+    DeliveryOption,
+    LocationAvailability,
+    PickupStore,
+    Product,
+    SkuOffer,
+)
 
 
 def _decimal(value: Any) -> Decimal | None:
@@ -120,11 +127,28 @@ class VtexClient(BaseHttpClient):
         longitude: float,
         limit: int = 5,
     ) -> list[PickupStore]:
+        availability = await self.location_availability(
+            product,
+            latitude=latitude,
+            longitude=longitude,
+            limit=limit,
+        )
+        return availability.tiendas_recojo
+
+    async def location_availability(
+        self,
+        product: Product,
+        *,
+        latitude: float,
+        longitude: float,
+        limit: int = 5,
+    ) -> LocationAvailability:
         offers = sorted(product.sku_offers, key=lambda offer: offer.seller_id != "1")[:5]
         if not offers:
-            return []
+            return LocationAvailability(disponible_online=product.disponible)
 
         stores: dict[str, PickupStore] = {}
+        delivery_options: dict[tuple[str, str | None], DeliveryOption] = {}
         for offer in offers:
             response = await self._request(
                 "POST",
@@ -147,7 +171,17 @@ class VtexClient(BaseHttpClient):
             payload = response.json()
             for logistics in payload.get("logisticsInfo") or []:
                 for sla in logistics.get("slas") or []:
-                    if sla.get("deliveryChannel") != "pickup-in-point":
+                    delivery_channel = sla.get("deliveryChannel")
+                    if delivery_channel == "delivery":
+                        name = str(sla.get("name") or "Envío a domicilio").strip()
+                        estimate = sla.get("shippingEstimate")
+                        key = (name, estimate)
+                        delivery_options[key] = DeliveryOption(
+                            nombre=name,
+                            tiempo_entrega=estimate,
+                        )
+                        continue
+                    if delivery_channel != "pickup-in-point":
                         continue
                     store_info = sla.get("pickupStoreInfo") or {}
                     address = store_info.get("address") or {}
@@ -164,13 +198,15 @@ class VtexClient(BaseHttpClient):
                         distancia_km=sla.get("pickupDistance"),
                         tiempo_recojo=sla.get("shippingEstimate"),
                     )
-            if len(stores) >= limit:
-                break
-
-        return sorted(
+        sorted_stores = sorted(
             stores.values(),
             key=lambda store: store.distancia_km if store.distancia_km is not None else float("inf"),
         )[:limit]
+        return LocationAvailability(
+            disponible_online=product.disponible,
+            opciones_envio=list(delivery_options.values())[:limit],
+            tiendas_recojo=sorted_stores,
+        )
 
     async def search_many(self, queries: list[str]) -> list[Product]:
         results = await asyncio.gather(*(self.search(query) for query in queries), return_exceptions=True)

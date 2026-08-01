@@ -8,6 +8,7 @@ from app.models import (
     CoolboxResponse,
     HistoryMessage,
     IntentType,
+    LocationAvailability,
     PickupStore,
     Product,
     QueryAnalysis,
@@ -111,17 +112,19 @@ async def test_store_stock_uses_checkout_pickup_simulation_with_location() -> No
     ai.analyze.side_effect = ExternalServiceError("offline")
     product = Product(id="10", nombre="iPhone 15", disponible=True)
     vtex.search.return_value = [product]
-    vtex.pickup_stores.return_value = [
-        PickupStore(
-            id="store-1",
-            nombre="Coolbox Pardo II",
-            direccion="Avenida José Pardo 221",
-            distrito="Miraflores",
-            ciudad="Lima",
-            distancia_km=0.1,
-            tiempo_recojo="3bd",
-        )
-    ]
+    vtex.location_availability.return_value = LocationAvailability(
+        tiendas_recojo=[
+            PickupStore(
+                id="store-1",
+                nombre="Coolbox Pardo II",
+                direccion="Avenida José Pardo 221",
+                distrito="Miraflores",
+                ciudad="Lima",
+                distancia_km=0.1,
+                tiempo_recojo="3bd",
+            )
+        ]
+    )
 
     response = await chat.process(
         ChatRequest.model_validate(
@@ -136,7 +139,7 @@ async def test_store_stock_uses_checkout_pickup_simulation_with_location() -> No
     assert "Coolbox Pardo II" in response.respuesta
     assert "disponible para recojo" in response.respuesta
     assert "3 días hábiles" in response.respuesta
-    vtex.pickup_stores.assert_awaited_once_with(
+    vtex.location_availability.assert_awaited_once_with(
         product,
         latitude=-12.12,
         longitude=-77.03,
@@ -148,14 +151,16 @@ async def test_store_stock_infers_piura_from_webchat_message() -> None:
     ai.analyze.side_effect = ExternalServiceError("offline")
     product = Product(id="10", nombre="iPhone 15", disponible=True)
     vtex.search.return_value = [product]
-    vtex.pickup_stores.return_value = [PickupStore(id="piura-1", nombre="Coolbox Piura", ciudad="Piura")]
+    vtex.location_availability.return_value = LocationAvailability(
+        tiendas_recojo=[PickupStore(id="piura-1", nombre="Coolbox Piura", ciudad="Piura")]
+    )
 
     response = await chat.process(ChatRequest(mensaje="¿Qué tiendas tienen stock del iPhone 15 en Piura?"))
 
     assert response.intencion == IntentType.CONSULTAR_STOCK
     assert "Coolbox Piura" in response.respuesta
     assert "cerca de Piura" in response.respuesta
-    vtex.pickup_stores.assert_awaited_once_with(
+    vtex.location_availability.assert_awaited_once_with(
         product,
         latitude=-5.1945,
         longitude=-80.6328,
@@ -221,9 +226,9 @@ async def test_location_only_followup_reuses_product_from_history() -> None:
         disponible=True,
     )
     vtex.search.return_value = [product]
-    vtex.pickup_stores.return_value = [
-        PickupStore(id="lima-1", nombre="Coolbox Centro Cívico", ciudad="Lima")
-    ]
+    vtex.location_availability.return_value = LocationAvailability(
+        tiendas_recojo=[PickupStore(id="lima-1", nombre="Coolbox Centro Cívico", ciudad="Lima")]
+    )
 
     response = await chat.process(
         ChatRequest(
@@ -235,11 +240,46 @@ async def test_location_only_followup_reuses_product_from_history() -> None:
     assert response.intencion == IntentType.CONSULTAR_STOCK
     assert "Coolbox Centro Cívico" in response.respuesta
     vtex.search.assert_awaited_once_with("iphone 15", order_by=None)
-    vtex.pickup_stores.assert_awaited_once_with(
+    vtex.location_availability.assert_awaited_once_with(
         product,
         latitude=-12.0464,
         longitude=-77.0428,
     )
+
+
+async def test_online_only_product_does_not_claim_it_is_unavailable_in_lima() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    product = Product(nombre="iPhone 17 Pro Max Cosmic Orange", disponible=True)
+    vtex.search.return_value = [product]
+    vtex.location_availability.return_value = LocationAvailability(disponible_online=True)
+
+    response = await chat.process(ChatRequest(mensaje="¿Está disponible el iPhone 17 Pro Max en Lima?"))
+
+    assert "sí figura con stock para compra online" in response.respuesta
+    assert "No encontré tiendas" not in response.respuesta
+    assert "dirección exacta" in response.respuesta
+
+
+async def test_home_delivery_is_reported_separately_from_store_pickup() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    product = Product(nombre="iPhone 17 Pro Max Cosmic Orange", disponible=True)
+    vtex.search.return_value = [product]
+    vtex.location_availability.return_value = LocationAvailability.model_validate(
+        {
+            "disponible_online": True,
+            "opciones_envio": [
+                {"nombre": "Envío a domicilio", "tiempo_entrega": "2bd"}
+            ],
+        }
+    )
+
+    response = await chat.process(ChatRequest(mensaje="¿Está disponible el iPhone 17 Pro Max en Lima?"))
+
+    assert "envío a domicilio en Lima" in response.respuesta
+    assert "2 días hábiles" in response.respuesta
+    assert "recojo en una tienda física" in response.respuesta
 
 
 async def test_ordinal_followup_uses_product_named_by_assistant() -> None:

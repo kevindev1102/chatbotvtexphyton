@@ -16,7 +16,7 @@ from app.models import (
     ChatResponse,
     CoolboxResponse,
     IntentType,
-    PickupStore,
+    LocationAvailability,
     Product,
     QueryAnalysis,
 )
@@ -60,6 +60,8 @@ class ChatService:
             if prior_query:
                 analysis_message = f"{prior_query} stock"
                 asks_store_stock = True
+        if named_location is not None and current_analysis.intencion == IntentType.CONSULTAR_STOCK:
+            asks_store_stock = True
 
         if asks_store_stock and request.ubicacion is None and named_location is None:
             return ChatResponse(
@@ -119,17 +121,19 @@ class ChatService:
             )
             try:
                 selected_product = products[0]
-                stores: list[PickupStore] = []
+                availability = LocationAvailability(disponible_online=selected_product.disponible)
                 for candidate in products[:5]:
-                    candidate_stores = await self.vtex.pickup_stores(
+                    candidate_availability = await self.vtex.location_availability(
                         candidate,
                         latitude=latitude,
                         longitude=longitude,
                     )
-                    if candidate_stores:
+                    if candidate_availability.opciones_envio or candidate_availability.tiendas_recojo:
                         selected_product = candidate
-                        stores = candidate_stores
+                        availability = candidate_availability
                         break
+                    if candidate is selected_product:
+                        availability = candidate_availability
             except ExternalServiceError:
                 return ChatResponse(
                     intencion=IntentType.CONSULTAR_STOCK,
@@ -140,8 +144,10 @@ class ChatService:
                 )
             return ChatResponse(
                 intencion=IntentType.CONSULTAR_STOCK,
-                respuesta=self._pickup_stores_answer(
-                    selected_product, stores, named_location.name if named_location else None
+                respuesta=self._location_availability_answer(
+                    selected_product,
+                    availability,
+                    named_location.name if named_location else None,
                 ),
             )
 
@@ -575,18 +581,49 @@ class ChatService:
             lines.append(f"• {product.nombre} — {price} — {stock}")
         return "\n".join(lines)
 
-    def _pickup_stores_answer(
-        self, product: Product, stores: list[PickupStore], searched_location: str | None = None
+    def _location_availability_answer(
+        self,
+        product: Product,
+        availability: LocationAvailability,
+        searched_location: str | None = None,
     ) -> str:
-        if not stores:
-            location_text = f" cerca de {searched_location}" if searched_location else " cercanas"
+        stores = availability.tiendas_recojo
+        delivery_options = availability.opciones_envio
+        location_text = f" en {searched_location}" if searched_location else " para tu ubicación"
+
+        if not stores and not delivery_options:
+            if availability.disponible_online:
+                return (
+                    f"{product.nombre} sí figura con stock para compra online. "
+                    f"No encontré recojo en tienda ni pude confirmar el envío a domicilio{location_text} "
+                    "usando la ubicación de referencia. La cobertura de delivery se calcula con la "
+                    "dirección exacta; confírmala en el checkout de Coolbox."
+                )
             return (
-                f"No encontré tiendas{location_text} con {product.nombre} disponible para recojo. "
-                "Puedes probar con otra ubicación o producto."
+                f"No encontré {product.nombre} disponible para envío a domicilio ni recojo en tienda"
+                f"{location_text}. Puedes probar con otra ubicación o producto."
             )
 
-        location_text = f" cerca de {searched_location}" if searched_location else ""
-        lines = [f"Encontré {product.nombre} disponible para recojo{location_text} en:"]
+        lines: list[str] = []
+        if delivery_options:
+            estimates = {
+                self._humanize_shipping_estimate(option.tiempo_entrega)
+                for option in delivery_options
+                if option.tiempo_entrega
+            }
+            estimate_text = f" (estimado: {', '.join(sorted(estimates))})" if estimates else ""
+            lines.append(
+                f"Sí, {product.nombre} está disponible con envío a domicilio{location_text}{estimate_text}."
+            )
+
+        if not stores:
+            lines.append("No encontré disponibilidad para recojo en una tienda física cercana.")
+            lines.append("La disponibilidad puede cambiar antes de completar la compra.")
+            return "\n".join(lines)
+
+        pickup_location = f" cerca de {searched_location}" if searched_location else ""
+        pickup_prefix = "También está" if delivery_options else f"Encontré {product.nombre}"
+        lines.append(f"{pickup_prefix} disponible para recojo{pickup_location} en:")
         for store in stores[:5]:
             location = ", ".join(value for value in (store.direccion, store.distrito, store.ciudad) if value)
             distance = f" · {store.distancia_km:.1f} km" if store.distancia_km is not None else ""
