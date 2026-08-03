@@ -50,12 +50,10 @@ class ChatService:
         analysis_message = without_named_location(message, named_location)
         current_analysis = self.intent.analyze(analysis_message)
         referenced_product = self._referenced_product_from_history(message, history)
+        if not referenced_product and self._is_implicit_product_followup(message, current_analysis):
+            referenced_product = self._latest_unambiguous_product(history)
         if referenced_product:
-            intent_prefix = {
-                IntentType.CONSULTAR_PRECIO: "precio",
-                IntentType.CONSULTAR_STOCK: "stock",
-                IntentType.CONSULTAR_CARACTERISTICAS: "caracteristicas",
-            }.get(current_analysis.intencion, "buscar")
+            intent_prefix = self._referenced_product_intent_prefix(message, current_analysis)
             analysis_message = f"{intent_prefix} {referenced_product}"
             current_analysis = self.intent.analyze(analysis_message)
         if named_location is not None and self._is_location_only_followup(current_analysis):
@@ -505,7 +503,13 @@ class ChatService:
             candidate = match.group(1).strip()
             # El modelo suele añadir precio al final de la viñeta. Ese texto nunca
             # debe volver a VTEX como parte de la búsqueda del producto.
-            candidate = re.split(r"\s+(?:-|—)\s*S/\s*", candidate, maxsplit=1)[0]
+            deterministic_name = re.split(r"\s+—\s+S/\s*", candidate, maxsplit=1)
+            if len(deterministic_name) == 2:
+                candidate = deterministic_name[0].strip()
+                if len(candidate) >= 3:
+                    names.append(candidate)
+                continue
+            candidate = re.split(r"\s+-\s*S/\s*", candidate, maxsplit=1)[0]
             candidate = candidate.split("—", 1)[0].split(":", 1)[0].strip()
             # En respuestas antiguas las variantes se agrupaban entre paréntesis y
             # luego venían características separadas por comas.
@@ -513,6 +517,54 @@ class ChatService:
             if len(candidate) >= 3:
                 names.append(candidate)
         return names
+
+    @staticmethod
+    def _is_implicit_product_followup(message: str, analysis: QueryAnalysis) -> bool:
+        normalized_message = normalize(message)
+        query = normalize(analysis.busqueda)
+        generic_query_tokens = {
+            "detall",
+            "detalle",
+            "detalles",
+            "informacion",
+            "precio",
+            "stock",
+            "sus",
+        }
+        has_no_explicit_product = not query or set(query.split()).issubset(generic_query_tokens)
+        if not has_no_explicit_product:
+            return False
+        return contains_any(
+            normalized_message,
+            "sus caracteristicas",
+            "sus especificaciones",
+            "mas detalles",
+            "mas informacion",
+            "cuanto cuesta",
+            "que precio",
+            "el precio",
+            "tiene stock",
+            "hay stock",
+            "esta disponible",
+        )
+
+    @staticmethod
+    def _referenced_product_intent_prefix(message: str, analysis: QueryAnalysis) -> str:
+        prefix = {
+            IntentType.CONSULTAR_PRECIO: "precio",
+            IntentType.CONSULTAR_STOCK: "stock",
+            IntentType.CONSULTAR_CARACTERISTICAS: "caracteristicas",
+        }.get(analysis.intencion)
+        if prefix:
+            return prefix
+        normalized_message = normalize(message)
+        if contains_any(normalized_message, "precio", "cuanto cuesta", "costo"):
+            return "precio"
+        if contains_any(normalized_message, "stock", "disponible", "disponibilidad"):
+            return "stock"
+        if contains_any(normalized_message, "caracteristicas", "especificaciones"):
+            return "caracteristicas"
+        return "buscar"
 
     @staticmethod
     def _is_location_only_followup(analysis: QueryAnalysis) -> bool:
@@ -682,6 +734,8 @@ class ChatService:
         )
         query_tokens = image_query.split()
         product_name = normalize(products[0].nombre)
+        product_identity = normalize(products[0].nombre.split(",", 1)[0])
+        query_identity = normalize((analysis.busqueda or "").split(",", 1)[0])
         is_specific = (
             any(character.isdigit() for character in image_query)
             or len(query_tokens) >= 3
@@ -694,7 +748,12 @@ class ChatService:
             if getattr(item, "rol", "") not in {"asistente", "assistant"}:
                 continue
             previous_answer = normalize(getattr(item, "contenido", ""))
-            if product_name in previous_answer or (query and query in previous_answer):
+            if (
+                product_name in previous_answer
+                or (query and query in previous_answer)
+                or (product_identity and product_identity in previous_answer)
+                or (query_identity and query_identity in previous_answer)
+            ):
                 return None
         return products[0].imagen_url
 

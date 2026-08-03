@@ -494,6 +494,61 @@ async def test_ordinal_followup_extracts_only_name_from_unformatted_sales_bullet
     vtex.search.assert_awaited_once_with("jbl live flex 3", order_by=None)
 
 
+async def test_characteristics_followup_reuses_single_product_from_previous_answer() -> None:
+    chat, vtex, _, _ = service()
+    iphone = Product(
+        nombre=(
+            "iPhone 16e 5G 128GB, 8GB RAM, cámara trasera 48MP y frontal 12MP, 6.1 pulgadas, negro"
+        ),
+        marca="Apple",
+        categorias=["/Celulares y Accesorios/Celulares/Apple/"],
+        disponible=True,
+        imagen_url="https://cdn.example.test/iphone-16e.jpg",
+        caracteristicas={"Procesador": ["Apple A18"], "Memoria RAM": ["8 GB"]},
+    )
+    vtex.search.return_value = [
+        Product(
+            nombre="Pedal de sustain Yamaha FC-5A para teclado",
+            categorias=["/Instrumentos Musicales/"],
+            disponible=True,
+        ),
+        iphone,
+    ]
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="dime sus características",
+            historial=[
+                HistoryMessage(
+                    rol="asistente",
+                    contenido=(
+                        "🔎 Encontré estas opciones:\n"
+                        "• iPhone 16e 5G 128GB, 8GB RAM, cámara trasera 48MP y frontal 12MP, "
+                        "6.1 pulgadas, negro — S/ 2.199,00 — disponible\n"
+                        "• iPhone 15 eSIM 5G 128GB — S/ 2.679,00 — disponible"
+                    ),
+                ),
+                HistoryMessage(rol="usuario", contenido="dame más información sobre el primero"),
+                HistoryMessage(
+                    rol="asistente",
+                    contenido=(
+                        "🔎 Encontré estas opciones:\n"
+                        "• iPhone 16e 5G 128GB, 8GB RAM, cámara trasera 48MP y frontal 12MP, "
+                        "6.1 pulgadas, negro — S/ 2.199,00 — disponible"
+                    ),
+                ),
+            ],
+        )
+    )
+
+    assert response.intencion == IntentType.CONSULTAR_CARACTERISTICAS
+    assert "iPhone 16e" in response.respuesta
+    assert "Apple A18" in response.respuesta
+    assert "Pedal" not in response.respuesta
+    assert "iphone 16e" in str(vtex.search.await_args).lower()
+    assert response.imagen is None
+
+
 def test_explicit_brand_filter_never_falls_back_to_other_brands() -> None:
     products = [
         Product(nombre="Smart TV LG", marca="LG", categorias=["/Televisores/"], disponible=True),
