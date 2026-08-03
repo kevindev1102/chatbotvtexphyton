@@ -135,6 +135,52 @@ def test_console_query_excludes_video_games() -> None:
     assert [item.nombre for item in result] == ["Consola PlayStation 5 Slim"]
 
 
+def test_switch_2_query_excludes_lite_and_oled_and_prefers_expensive_results() -> None:
+    products = [
+        Product(
+            nombre="Consola Nintendo Switch Lite 32GB",
+            marca="Nintendo",
+            categorias=["/Consolas/Nintendo Switch/"],
+            precio=975,
+            disponible=True,
+        ),
+        Product(
+            nombre="Nintendo Switch OLED 64GB",
+            marca="Nintendo",
+            categorias=["/Consolas/Nintendo Switch/"],
+            precio=1579,
+            disponible=True,
+        ),
+        Product(
+            nombre="Consola Nintendo Switch 2 256GB",
+            marca="Nintendo",
+            categorias=["/Consolas/Nintendo Switch/"],
+            precio=2049,
+            disponible=True,
+        ),
+        Product(
+            nombre="Consola Nintendo Switch 2 Bundle Mario Kart",
+            marca="Nintendo",
+            categorias=["/Consolas/Nintendo Switch/"],
+            precio=2349,
+            disponible=True,
+        ),
+    ]
+    analysis = QueryAnalysis(
+        intencion="BUSCAR_POR_MARCA",
+        busqueda="nintendo switch 2",
+        marca="nintendo",
+        categoria="consola",
+    )
+
+    result = rank_catalog_products(products, analysis)
+
+    assert [item.nombre for item in result] == [
+        "Consola Nintendo Switch 2 Bundle Mario Kart",
+        "Consola Nintendo Switch 2 256GB",
+    ]
+
+
 def test_console_description_can_mention_games_without_being_excluded() -> None:
     console = product("Consola PlayStation 5 Slim", "Consolas")
     console.descripcion = "Incluye dos juegos y control DualSense"

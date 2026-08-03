@@ -692,13 +692,13 @@ class ChatService:
     def _deterministic_product_answer(self, intent: IntentType, products: list[Product]) -> str:
         if intent == IntentType.CONSULTAR_PRECIO:
             lines = ["💰 Estos son los precios que encontré:"]
-            for product in products[:3]:
+            for product in products[:5]:
                 price = self._price(product.precio) if product.precio is not None else "precio no disponible"
                 lines.append(f"• {product.nombre}: {price}")
             return "\n".join(lines)
         if intent == IntentType.CONSULTAR_STOCK:
             lines = ["📦 Disponibilidad general del catálogo:"]
-            for product in products[:3]:
+            for product in products[:5]:
                 status = "disponible en tienda online" if product.disponible else "sin stock disponible"
                 lines.append(f"• {product.nombre}: {status}")
             return "\n".join(lines)
@@ -713,7 +713,7 @@ class ChatService:
 
     def _local_product_answer(self, products: list[Product]) -> str:
         lines = ["🔎 Encontré estas opciones:"]
-        for product in products[:3]:
+        for product in products[:5]:
             price = self._price(product.precio) if product.precio is not None else "precio no disponible"
             stock = "disponible" if product.disponible else "agotado"
             lines.append(f"• {product.nombre} — {price} — {stock}")

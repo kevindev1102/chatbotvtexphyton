@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
 from app.intent import normalize
@@ -107,6 +108,14 @@ def _specific_terms(query: str) -> list[str]:
     return [term for term in SPECIFIC_PRODUCT_TERMS if _contains_term(query, term)]
 
 
+def _model_number_terms(query: str) -> list[str]:
+    return re.findall(
+        r"\b(?:galaxy|google pixel|ipad|iphone|nintendo switch|pixel|playstation|switch|watch|xbox)"
+        r"\s*(\d{1,2})\b",
+        query,
+    )
+
+
 def _is_accessory(text: str) -> bool:
     return any(_contains_term(text, term) for term in ACCESSORY_TERMS)
 
@@ -129,6 +138,7 @@ def rank_catalog_products(products: list[Product], analysis: QueryAnalysis) -> l
     query = normalize(analysis.busqueda or analysis.marca or analysis.categoria)
     family = _requested_family(analysis, query)
     specific_terms = _specific_terms(query)
+    model_numbers = _model_number_terms(query)
     accessory_request = _is_accessory(query)
     requested_accessories = [term for term in ACCESSORY_TERMS if _contains_term(query, term)]
     query_tokens = {
@@ -167,6 +177,8 @@ def rank_catalog_products(products: list[Product], analysis: QueryAnalysis) -> l
             )
             if not matches_specific:
                 continue
+        if model_numbers and not all(_contains_term(name, number) for number in model_numbers):
+            continue
         if requested_accessories and not any(
             any(
                 _contains_term(product_text, candidate)
@@ -197,15 +209,22 @@ def rank_catalog_products(products: list[Product], analysis: QueryAnalysis) -> l
             score += 20
         if specific_terms:
             score += 40
+        if model_numbers:
+            score += 60
         if query_tokens and score == 0:
             continue
         ranked.append((score, product))
+
+    def price_order(product: Product) -> Decimal:
+        if product.precio is None:
+            return Decimal("Infinity")
+        return product.precio if analysis.ordenar_por_menor_precio else -product.precio
 
     ranked.sort(
         key=lambda item: (
             -item[0],
             not item[1].disponible,
-            item[1].precio if item[1].precio is not None else Decimal("Infinity"),
+            price_order(item[1]),
         )
     )
     return [product for _, product in ranked]

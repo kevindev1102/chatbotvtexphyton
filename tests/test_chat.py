@@ -263,7 +263,27 @@ async def test_specific_product_query_returns_only_one_image() -> None:
 
     response = await chat.process(ChatRequest(mensaje="¿Cuánto cuesta el iPhone 15?"))
 
-    assert response.imagen == "https://cdn.example.test/iphone-15.jpg"
+    assert response.imagen == "https://cdn.example.test/iphone-15-256.jpg"
+
+
+async def test_general_catalog_answer_shows_up_to_five_products() -> None:
+    chat, vtex, _, _ = service()
+    vtex.search_many.return_value = [
+        Product(
+            nombre=f"Apple iPhone modelo {index}",
+            marca="Apple",
+            categorias=["/Celulares y Accesorios/Celulares/Apple/"],
+            precio=1000 + index,
+            disponible=True,
+        )
+        for index in range(1, 7)
+    ]
+
+    response = await chat.process(ChatRequest(mensaje="muéstrame celulares Apple"))
+
+    assert response.respuesta.count("•") == 5
+    assert "modelo 6" in response.respuesta
+    assert "modelo 1" not in response.respuesta
 
 
 async def test_specific_product_image_is_not_repeated_when_already_in_history() -> None:

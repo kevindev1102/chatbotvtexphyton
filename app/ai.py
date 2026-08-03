@@ -46,7 +46,7 @@ Reglas obligatorias:
 - Usa únicamente los productos y datos incluidos en el contexto recibido.
 - No menciones VTEX, OpenAI, API, backend ni detalles técnicos.
 - No incluyas enlaces.
-- Prioriza productos disponibles, evita duplicados y muestra como máximo 3.
+- Prioriza productos disponibles, evita duplicados y muestra como máximo 5.
 - Cada producto ocupa una sola viñeta con nombre, precio y un dato clave.
 - Copia el nombre exacto del catálogo y escríbelo entre **doble asterisco**; no incluyas
   características, colores agrupados ni precio dentro de los asteriscos.
