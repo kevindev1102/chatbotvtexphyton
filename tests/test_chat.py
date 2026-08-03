@@ -325,6 +325,83 @@ async def test_location_only_followup_reuses_product_from_history() -> None:
     )
 
 
+async def test_estoy_en_lima_reuses_exact_product_from_assistant_history() -> None:
+    chat, vtex, _, _ = service()
+    product = Product(
+        id="iphone-17",
+        nombre="iPhone 17 5G 256GB, 8GB RAM, cámara trasera 48MP y frontal 18MP",
+        marca="Apple",
+        categoria="Celulares",
+        categorias=["/Celulares y Accesorios/Celulares/Apple/"],
+        disponible=True,
+    )
+    vtex.search.return_value = [product]
+    vtex.location_availability.return_value = LocationAvailability(
+        tiendas_recojo=[PickupStore(id="lima-1", nombre="Coolbox Salaverry", ciudad="Lima")]
+    )
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="estoy en Lima",
+            historial=[
+                HistoryMessage(
+                    rol="asistente",
+                    contenido=(
+                        "Aquí tienes información: **iPhone 17 5G 256GB, 8GB RAM, "
+                        "cámara trasera 48MP y frontal 18MP** - S/ 3.779,00"
+                    ),
+                ),
+                HistoryMessage(
+                    rol="usuario",
+                    contenido="¿En qué tienda está disponible este iPhone?",
+                ),
+                HistoryMessage(
+                    rol="asistente",
+                    contenido="¿En qué ciudad deseas buscar tiendas con disponibilidad para recojo?",
+                ),
+            ],
+        )
+    )
+
+    assert "Coolbox Salaverry" in response.respuesta
+    assert "estoy" not in str(vtex.search.await_args).lower()
+    assert "iphone 17" in str(vtex.search.await_args).lower()
+    assert response.imagen is None
+
+
+async def test_plain_lima_ignores_previous_location_residue_query() -> None:
+    chat, vtex, _, _ = service()
+    product = Product(
+        nombre="iPhone 17 5G 256GB",
+        categorias=["/Celulares y Accesorios/Celulares/Apple/"],
+        disponible=True,
+    )
+    vtex.search.return_value = [product]
+    vtex.location_availability.return_value = LocationAvailability(
+        tiendas_recojo=[PickupStore(id="lima-1", nombre="Coolbox Centro Cívico")]
+    )
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="Lima",
+            historial=[
+                HistoryMessage(
+                    rol="asistente",
+                    contenido="Información de **iPhone 17 5G 256GB** - S/ 3.779,00",
+                ),
+                HistoryMessage(rol="usuario", contenido="estoy en Lima"),
+                HistoryMessage(
+                    rol="asistente",
+                    contenido="¿En qué ciudad deseas buscar tiendas con disponibilidad para recojo?",
+                ),
+            ],
+        )
+    )
+
+    assert "Coolbox Centro Cívico" in response.respuesta
+    assert "estoy" not in str(vtex.search.await_args).lower()
+
+
 async def test_online_only_product_does_not_claim_it_is_unavailable_in_lima() -> None:
     chat, vtex, _, ai = service()
     ai.analyze.side_effect = ExternalServiceError("offline")

@@ -59,10 +59,12 @@ class ChatService:
             analysis_message = f"{intent_prefix} {referenced_product}"
             current_analysis = self.intent.analyze(analysis_message)
         if named_location is not None and self._is_location_only_followup(current_analysis):
-            prior_query = self._prior_catalog_query(history)
+            prior_product = self._latest_unambiguous_product(history)
+            prior_query = prior_product or self._prior_catalog_query(history)
             if prior_query:
                 analysis_message = f"{prior_query} stock"
                 asks_store_stock = True
+                referenced_product = prior_product or referenced_product
         if named_location is not None and current_analysis.intencion == IntentType.CONSULTAR_STOCK:
             asks_store_stock = True
 
@@ -431,7 +433,7 @@ class ChatService:
             if analysis.intencion.is_support:
                 continue
             query = normalize(analysis.busqueda)
-            if query and query not in {"si", "tiene", "producto", "productos"}:
+            if query and not self._is_location_only_followup(analysis):
                 return query
         return None
 
@@ -450,19 +452,48 @@ class ChatService:
             (index for word, index in ordinal_positions.items() if contains_any(normalized_message, word)),
             None,
         )
-        if position is None:
+        refers_to_single_product = contains_any(
+            normalized_message,
+            "este iphone",
+            "ese iphone",
+            "este celular",
+            "ese celular",
+            "este producto",
+            "ese producto",
+        )
+        if position is None and not refers_to_single_product:
             return None
 
         for item in reversed(history):
             if getattr(item, "rol", "") not in {"asistente", "assistant"}:
                 continue
             content = getattr(item, "contenido", "")
-            names = [value.strip() for value in re.findall(r"\*\*([^*\n]{3,180})\*\*", content)]
-            if not names:
-                names = ChatService._unformatted_product_names(content)
-            if position < len(names):
+            names = ChatService._product_names_from_assistant_content(content)
+            if refers_to_single_product and position is None:
+                if len(names) == 1:
+                    return names[0]
+                if names:
+                    return None
+            elif position is not None and position < len(names):
                 return names[position]
         return None
+
+    @staticmethod
+    def _latest_unambiguous_product(history: list[Any]) -> str | None:
+        for item in reversed(history):
+            if getattr(item, "rol", "") not in {"asistente", "assistant"}:
+                continue
+            names = ChatService._product_names_from_assistant_content(
+                getattr(item, "contenido", "")
+            )
+            if names:
+                return names[0] if len(names) == 1 else None
+        return None
+
+    @staticmethod
+    def _product_names_from_assistant_content(content: str) -> list[str]:
+        names = [value.strip() for value in re.findall(r"\*\*([^*\n]{3,180})\*\*", content)]
+        return names or ChatService._unformatted_product_names(content)
 
     @staticmethod
     def _unformatted_product_names(content: str) -> list[str]:
@@ -486,7 +517,22 @@ class ChatService:
     @staticmethod
     def _is_location_only_followup(analysis: QueryAnalysis) -> bool:
         query = normalize(analysis.busqueda)
-        return not query or query in {"si", "tiene", "producto", "productos"}
+        location_residue = {
+            "aqui",
+            "de",
+            "encuentro",
+            "estoy",
+            "me",
+            "soy",
+            "ubicada",
+            "ubicado",
+            "vivo",
+        }
+        return (
+            not query
+            or query in {"si", "tiene", "producto", "productos"}
+            or set(query.split()).issubset(location_residue)
+        )
 
     @staticmethod
     def _missing_support_parameter(analysis: QueryAnalysis) -> str | None:
