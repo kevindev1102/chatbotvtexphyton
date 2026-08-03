@@ -92,6 +92,37 @@ def test_accessory_query_does_not_return_main_device() -> None:
     assert [item.nombre for item in result] == ["Funda para iPad Air 11"]
 
 
+def test_cellphone_query_excludes_accessories_from_cellphone_category() -> None:
+    iphone = Product(
+        nombre="iPhone 15 128GB",
+        marca="Apple",
+        categorias=["/Celulares y Accesorios/Celulares/Apple/"],
+        disponible=True,
+    )
+    airtag = Product(
+        nombre="Localizador Apple AirTag 2da Gen",
+        marca="Apple",
+        categorias=["/Celulares y Accesorios/Accesorios para Celular/Otros Accesorios/"],
+        disponible=True,
+    )
+    apple_watch = Product(
+        nombre="Smartwatch Apple Watch Series SE 3",
+        marca="Apple",
+        categorias=["/Celulares y Accesorios/Smartwatch/Apple/"],
+        disponible=True,
+    )
+    analysis = QueryAnalysis(
+        intencion="BUSCAR_POR_MARCA",
+        busqueda="celular apple",
+        marca="apple",
+        categoria="celular",
+    )
+
+    result = rank_catalog_products([airtag, apple_watch, iphone], analysis)
+
+    assert result == [iphone]
+
+
 def test_console_query_excludes_video_games() -> None:
     products = [
         product("UFC 5 (Latam) - PlayStation 5 (PS5)", "Videojuegos"),

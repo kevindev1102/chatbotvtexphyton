@@ -80,6 +80,8 @@ QUERY_NOISE = {
     "equipo",
     "equipos",
     "catalogo",
+    "informacion",
+    "sobre",
 }
 
 
@@ -110,6 +112,15 @@ def _is_accessory(text: str) -> bool:
 
 
 def _matches_family(product: Product, family: str) -> bool:
+    name = normalize(product.nombre)
+    if family == "celular":
+        if any(_contains_term(name, term) for term in FAMILY_TERMS[family]):
+            return True
+        return any(
+            "/celular/" in category.lower().replace(" ", "")
+            or "/celulares/" in category.lower().replace(" ", "")
+            for category in product.categorias
+        )
     searchable = normalize(" ".join([product.nombre, product.categoria or "", *product.categorias]))
     return any(_contains_term(searchable, term) for term in FAMILY_TERMS[family])
 
@@ -165,8 +176,14 @@ def rank_catalog_products(products: list[Product], analysis: QueryAnalysis) -> l
         ):
             continue
         is_main_device_category = any(_contains_term(categories, term) for term in MAIN_DEVICE_CATEGORY_TERMS)
-        is_accessory_category = any(_contains_term(categories, term) for term in ACCESSORY_CATEGORY_TERMS)
+        category_without_mixed_parent = categories.replace("celulares y accesorios", "")
+        is_accessory_category = any(
+            _contains_term(category_without_mixed_parent, term)
+            for term in ACCESSORY_CATEGORY_TERMS
+        )
         if accessory_request and is_main_device_category and not is_accessory_category:
+            continue
+        if family and not accessory_request and is_accessory_category:
             continue
         if (family or specific_terms) and not accessory_request and _is_accessory(name):
             continue

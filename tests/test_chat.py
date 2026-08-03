@@ -217,6 +217,28 @@ async def test_greeting_before_iphone_query_returns_phones() -> None:
     vtex.search.assert_awaited_once_with("iphone", order_by=None)
 
 
+async def test_clear_catalog_query_uses_only_one_ai_call() -> None:
+    chat, vtex, _, ai = service()
+    vtex.search_many.return_value = [
+        Product(
+            nombre="Apple iPhone 15 128GB",
+            marca="Apple",
+            categoria="Celulares",
+            categorias=["/Celulares y Accesorios/Celulares/Apple/"],
+            disponible=True,
+        )
+    ]
+
+    response = await chat.process(
+        ChatRequest(mensaje="hola quisiera información sobre celulares Apple")
+    )
+
+    assert "Apple iPhone 15" in response.respuesta
+    ai.analyze.assert_not_awaited()
+    ai.answer.assert_not_awaited()
+    assert response.imagen is None
+
+
 async def test_specific_product_query_returns_only_one_image() -> None:
     chat, vtex, _, ai = service()
     ai.analyze.side_effect = ExternalServiceError("offline")

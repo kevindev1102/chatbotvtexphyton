@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import html
 import logging
 import re
@@ -26,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 
 class ChatService:
+    AI_STEP_TIMEOUT_SECONDS = 5
+
     def __init__(
         self,
         intent_service: IntentService,
@@ -79,12 +82,16 @@ class ChatService:
             return await self._process_support(local_analysis, history, message)
 
         analysis = local_analysis
-        try:
-            ai_analysis = await self.ai.analyze(analysis_message, history)
-            if not ai_analysis.intencion.is_support:
-                analysis = self._merge_analysis(ai_analysis, local_analysis)
-        except ExternalServiceError:
-            logger.info("Se usará análisis local para la consulta")
+        used_ai_analysis = False
+        if self._needs_ai_analysis(local_analysis):
+            try:
+                async with asyncio.timeout(self.AI_STEP_TIMEOUT_SECONDS):
+                    ai_analysis = await self.ai.analyze(analysis_message, history)
+                if not ai_analysis.intencion.is_support:
+                    analysis = self._merge_analysis(ai_analysis, local_analysis)
+                    used_ai_analysis = True
+            except (ExternalServiceError, TimeoutError):
+                logger.info("Se usará análisis local para la consulta")
 
         if analysis.requiere_aclaracion or analysis.intencion == IntentType.ACLARACION_REQUERIDA:
             return ChatResponse(
@@ -94,8 +101,9 @@ class ChatService:
 
         if analysis.intencion == IntentType.CONSULTA_GENERAL:
             try:
-                answer = await self.ai.answer(message, history, [])
-            except ExternalServiceError:
+                async with asyncio.timeout(self.AI_STEP_TIMEOUT_SECONDS):
+                    answer = await self.ai.answer(message, history, [])
+            except (ExternalServiceError, TimeoutError):
                 answer = "Puedo ayudarte con productos, precios, stock, pedidos y recomendaciones. ¿Qué deseas consultar?"
             return ChatResponse(respuesta=answer, intencion=analysis.intencion)
 
@@ -153,15 +161,28 @@ class ChatService:
             )
 
         if analysis.intencion in {
+            IntentType.BUSCAR_PRODUCTO,
+            IntentType.LISTAR_POR_CATEGORIA,
+            IntentType.BUSCAR_POR_MARCA,
             IntentType.CONSULTAR_PRECIO,
             IntentType.CONSULTAR_STOCK,
             IntentType.CONSULTAR_CARACTERISTICAS,
         }:
-            answer = self._deterministic_product_answer(analysis.intencion, products)
+            if analysis.intencion in {
+                IntentType.BUSCAR_PRODUCTO,
+                IntentType.LISTAR_POR_CATEGORIA,
+                IntentType.BUSCAR_POR_MARCA,
+            }:
+                answer = self._local_product_answer(products)
+            else:
+                answer = self._deterministic_product_answer(analysis.intencion, products)
         else:
             try:
-                answer = await self.ai.answer(message, history, products)
-            except ExternalServiceError:
+                if used_ai_analysis:
+                    raise ExternalServiceError("Ya se utilizó IA para analizar la consulta")
+                async with asyncio.timeout(self.AI_STEP_TIMEOUT_SECONDS):
+                    answer = await self.ai.answer(message, history, products)
+            except (ExternalServiceError, TimeoutError):
                 answer = self._local_product_answer(products)
         return ChatResponse(
             respuesta=answer,
@@ -332,6 +353,10 @@ class ChatService:
         return await self.vtex.search(
             analysis.busqueda or analysis.marca or analysis.categoria, order_by=order
         )
+
+    @staticmethod
+    def _needs_ai_analysis(analysis: QueryAnalysis) -> bool:
+        return analysis.requiere_aclaracion or analysis.intencion == IntentType.ACLARACION_REQUERIDA
 
     @staticmethod
     def _merge_analysis(ai: QueryAnalysis, local: QueryAnalysis) -> QueryAnalysis:
@@ -604,12 +629,17 @@ class ChatService:
             return None
 
         query = normalize(analysis.busqueda)
-        query_tokens = query.split()
+        image_query = " ".join(
+            token
+            for token in query.split()
+            if token not in {"dame", "informacion", "mostrar", "muestra", "quiero", "quisiera", "sobre"}
+        )
+        query_tokens = image_query.split()
         product_name = normalize(products[0].nombre)
         is_specific = (
-            any(character.isdigit() for character in query)
+            any(character.isdigit() for character in image_query)
             or len(query_tokens) >= 3
-            or (len(query_tokens) >= 2 and query in product_name)
+            or (len(query_tokens) >= 2 and image_query in product_name)
         )
         if not is_specific:
             return None
