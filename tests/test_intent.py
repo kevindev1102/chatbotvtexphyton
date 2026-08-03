@@ -30,6 +30,23 @@ def test_comparison_has_two_queries() -> None:
     assert analysis.productos_comparacion == ["iphone 15", "samsung s24"]
 
 
+def test_natural_better_question_is_a_two_product_comparison() -> None:
+    analysis = IntentService().analyze(
+        "¿Qué celular es mejor, el Samsung S26 o el iPhone 17?"
+    )
+
+    assert analysis.intencion == IntentType.COMPARAR_PRODUCTOS
+    assert analysis.productos_comparacion == ["samsung s26", "iphone 17"]
+
+
+def test_sugerirme_is_a_clean_recommendation_query() -> None:
+    analysis = IntentService().analyze("¿Puedes sugerirme celulares?")
+
+    assert analysis.intencion == IntentType.RECOMENDAR_PRODUCTOS
+    assert analysis.busqueda == "celular"
+    assert analysis.categoria == "celular"
+
+
 def test_extracts_budget() -> None:
     analysis = IntentService().analyze("Recomiéndame un celular por menos de 1000 soles")
 

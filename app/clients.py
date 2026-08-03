@@ -208,8 +208,13 @@ class VtexClient(BaseHttpClient):
             tiendas_recojo=sorted_stores,
         )
 
-    async def search_many(self, queries: list[str]) -> list[Product]:
-        results = await asyncio.gather(*(self.search(query) for query in queries), return_exceptions=True)
+    async def search_many(
+        self, queries: list[str], order_by: str | None = None
+    ) -> list[Product]:
+        results = await asyncio.gather(
+            *(self.search(query, order_by=order_by) for query in queries),
+            return_exceptions=True,
+        )
         products: list[Product] = []
         seen: set[str] = set()
         for result in results:

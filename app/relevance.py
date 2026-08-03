@@ -116,6 +116,16 @@ def _model_number_terms(query: str) -> list[str]:
     )
 
 
+def _model_code_terms(query: str) -> list[str]:
+    return [
+        token
+        for token in query.split()
+        if re.search(r"[a-z]", token)
+        and re.search(r"\d", token)
+        and token not in {"4g", "5g", "4k"}
+    ]
+
+
 def _is_accessory(text: str) -> bool:
     return any(_contains_term(text, term) for term in ACCESSORY_TERMS)
 
@@ -139,6 +149,7 @@ def rank_catalog_products(products: list[Product], analysis: QueryAnalysis) -> l
     family = _requested_family(analysis, query)
     specific_terms = _specific_terms(query)
     model_numbers = _model_number_terms(query)
+    model_codes = _model_code_terms(query)
     accessory_request = _is_accessory(query)
     requested_accessories = [term for term in ACCESSORY_TERMS if _contains_term(query, term)]
     query_tokens = {
@@ -179,6 +190,8 @@ def rank_catalog_products(products: list[Product], analysis: QueryAnalysis) -> l
                 continue
         if model_numbers and not all(_contains_term(name, number) for number in model_numbers):
             continue
+        if model_codes and not all(_contains_term(name, code) for code in model_codes):
+            continue
         if requested_accessories and not any(
             any(
                 _contains_term(product_text, candidate)
@@ -209,7 +222,7 @@ def rank_catalog_products(products: list[Product], analysis: QueryAnalysis) -> l
             score += 20
         if specific_terms:
             score += 40
-        if model_numbers:
+        if model_numbers or model_codes:
             score += 60
         if query_tokens and score == 0:
             continue

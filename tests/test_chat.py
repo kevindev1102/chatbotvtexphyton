@@ -214,7 +214,7 @@ async def test_greeting_before_iphone_query_returns_phones() -> None:
     response = await chat.process(ChatRequest(mensaje="hola que iphones tienes?"))
 
     assert "Apple iPhone 15" in response.respuesta
-    vtex.search.assert_awaited_once_with("iphone", order_by=None)
+    vtex.search.assert_awaited_once_with("iphone", order_by="OrderByPriceDESC")
 
 
 async def test_clear_catalog_query_uses_only_one_ai_call() -> None:
@@ -286,6 +286,52 @@ async def test_general_catalog_answer_shows_up_to_five_products() -> None:
     assert "modelo 1" not in response.respuesta
 
 
+async def test_natural_phone_comparison_searches_models_separately_with_brand_fallback() -> None:
+    chat, vtex, _, ai = service()
+    samsung_case = Product(
+        nombre="Case transparente para Samsung S26",
+        marca="G Mobile",
+        categorias=["/Celulares y Accesorios/Accesorios para Celular/"],
+        precio=39.9,
+        disponible=True,
+    )
+    samsung_alternative = Product(
+        nombre="Celular Samsung A56 5G 256GB",
+        marca="Samsung",
+        categorias=["/Celulares y Accesorios/Celulares/Samsung/"],
+        precio=1799,
+        disponible=True,
+    )
+    iphone = Product(
+        nombre="iPhone 17 5G 256GB",
+        marca="Apple",
+        categorias=["/Celulares y Accesorios/Celulares/Apple/"],
+        precio=3999,
+        disponible=True,
+    )
+    vtex.search_many.return_value = [samsung_case, samsung_alternative, iphone]
+    ai.answer.return_value = (
+        "No encontré un Samsung S26 disponible; como alternativa está el Samsung A56. "
+        "El iPhone 17 es la opción más potente de las encontradas."
+    )
+
+    response = await chat.process(
+        ChatRequest(mensaje="¿Qué celular es mejor, el Samsung S26 o el iPhone 17?")
+    )
+
+    queries = vtex.search_many.await_args.args[0]
+    assert vtex.search_many.await_args.kwargs["order_by"] == "OrderByPriceDESC"
+    assert "samsung s26" in queries
+    assert "iphone 17" in queries
+    assert "samsung celular" in queries
+    answer_products = ai.answer.await_args.args[2]
+    assert [product.nombre for product in answer_products] == [
+        "Celular Samsung A56 5G 256GB",
+        "iPhone 17 5G 256GB",
+    ]
+    assert "No encontré un Samsung S26" in response.respuesta
+
+
 async def test_specific_product_image_is_not_repeated_when_already_in_history() -> None:
     chat, vtex, _, ai = service()
     ai.analyze.side_effect = ExternalServiceError("offline")
@@ -337,7 +383,7 @@ async def test_location_only_followup_reuses_product_from_history() -> None:
 
     assert response.intencion == IntentType.CONSULTAR_STOCK
     assert "Coolbox Centro Cívico" in response.respuesta
-    vtex.search.assert_awaited_once_with("iphone 15", order_by=None)
+    vtex.search.assert_awaited_once_with("iphone 15", order_by="OrderByPriceDESC")
     vtex.location_availability.assert_awaited_once_with(
         product,
         latitude=-12.0464,
@@ -478,7 +524,7 @@ async def test_ordinal_followup_uses_product_named_by_assistant() -> None:
     assert response.intencion == IntentType.CONSULTAR_PRECIO
     assert "iPad Mini 128GB" in response.respuesta
     assert response.respuesta.count("•") == 1
-    vtex.search.assert_awaited_once_with("ipad mini 128gb", order_by=None)
+    vtex.search.assert_awaited_once_with("ipad mini 128gb", order_by="OrderByPriceDESC")
 
 
 async def test_ordinal_followup_extracts_only_name_from_unformatted_sales_bullet() -> None:
@@ -511,7 +557,7 @@ async def test_ordinal_followup_extracts_only_name_from_unformatted_sales_bullet
 
     assert response.intencion == IntentType.CONSULTAR_CARACTERISTICAS
     assert "Cancelación de ruido" in response.respuesta
-    vtex.search.assert_awaited_once_with("jbl live flex 3", order_by=None)
+    vtex.search.assert_awaited_once_with("jbl live flex 3", order_by="OrderByPriceDESC")
 
 
 async def test_characteristics_followup_reuses_single_product_from_previous_answer() -> None:
@@ -621,4 +667,7 @@ async def test_category_search_adds_broad_fallback_for_vtex() -> None:
 
     await chat._catalog_products(analysis)
 
-    vtex.search_many.assert_awaited_once_with(["playstation 5", "playstation 5 consola", "consola"])
+    vtex.search_many.assert_awaited_once_with(
+        ["playstation 5", "playstation 5 consola", "consola"],
+        order_by="OrderByPriceDESC",
+    )

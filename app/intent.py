@@ -89,6 +89,10 @@ FILLER_WORDS = {
     "recomiendame",
     "recomendacion",
     "sugiere",
+    "sugerencia",
+    "sugerencias",
+    "sugerir",
+    "sugerirme",
     "precio",
     "precios",
     "stock",
@@ -258,12 +262,29 @@ def _detect_intent(text: str, identifiers: dict[str, str | None]) -> IntentType:
         "entrega",
     ):
         return IntentType.CONSULTAR_PEDIDO
-    if contains_any(text, "compara", "comparar", "comparacion", "vs", "versus", "contra"):
+    natural_comparison = bool(
+        re.search(r"\b(?:cual|que)\b.*\b(?:mejor|conviene)\b", text)
+        and re.search(r"\s+o\s+", text)
+    )
+    if natural_comparison or contains_any(
+        text, "compara", "comparar", "comparacion", "vs", "versus", "contra"
+    ):
         return IntentType.COMPARAR_PRODUCTOS
     if contains_any(text, "para que sirve", "que es", "como funciona", "diferencia entre", "explicame"):
         return IntentType.CONSULTA_GENERAL
     if contains_any(
-        text, "regalo", "obsequio", "recomienda", "recomiendame", "recomendar", "sugiere", "conviene"
+        text,
+        "regalo",
+        "obsequio",
+        "recomienda",
+        "recomiendame",
+        "recomendar",
+        "sugiere",
+        "sugerir",
+        "sugerirme",
+        "sugerencia",
+        "sugerencias",
+        "conviene",
     ):
         return IntentType.RECOMENDAR_PRODUCTOS
     if contains_any(text, "stock", "disponible", "disponibilidad", "hay", "quedan", "en tienda", "tienes"):
@@ -312,7 +333,9 @@ def _detect_intent(text: str, identifiers: dict[str, str | None]) -> IntentType:
 def _comparison_terms(text: str) -> list[str]:
     normalized = normalize(text)
     cleaned = re.sub(r"^(?:compara|comparar|comparacion)(?:\s+(?:un|una|el|la))?\s+", "", normalized)
-    parts = re.split(r"\s+(?:vs|versus|contra|con)\s+", cleaned, maxsplit=1)
+    if re.search(r"\s+o\s+", cleaned) and re.search(r"\b(?:mejor|conviene)\b", cleaned):
+        cleaned = re.sub(r"^.*?\b(?:mejor|conviene)\b\s*", "", cleaned)
+    parts = re.split(r"\s+(?:vs|versus|contra|con|o)\s+", cleaned, maxsplit=1)
     return [_clean_search(part) for part in parts if _clean_search(part)] if len(parts) == 2 else []
 
 

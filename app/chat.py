@@ -309,15 +309,21 @@ class ChatService:
         return "\n".join(lines)
 
     async def _catalog_products(self, analysis: QueryAnalysis) -> list[Product]:
+        order = "OrderByPriceASC" if analysis.ordenar_por_menor_precio else "OrderByPriceDESC"
         if analysis.intencion == IntentType.COMPARAR_PRODUCTOS and analysis.productos_comparacion:
-            return await self.vtex.search_many(analysis.productos_comparacion)
+            queries = list(analysis.productos_comparacion)
+            if analysis.categoria:
+                for comparison in analysis.productos_comparacion:
+                    comparison_analysis = self.intent.analyze(comparison)
+                    if comparison_analysis.marca:
+                        queries.append(f"{comparison_analysis.marca} {analysis.categoria}")
+            return await self.vtex.search_many(list(dict.fromkeys(queries)), order_by=order)
         if analysis.intencion in {IntentType.RANKING_PRODUCTOS, IntentType.PRODUCTOS_DESTACADOS}:
             return await self.vtex.search(
                 analysis.busqueda,
                 limit=10,
                 order_by="OrderByTopSaleDESC",
             )
-        order = "OrderByPriceASC" if analysis.ordenar_por_menor_precio else None
         if analysis.marca and analysis.categoria:
             queries = [
                 value
@@ -331,12 +337,12 @@ class ChatService:
                 )
                 if value
             ]
-            return await self.vtex.search_many(queries)
+            return await self.vtex.search_many(queries, order_by=order)
         normalized_query = normalize(analysis.busqueda)
         requested_accessories = [term for term in ACCESSORY_TERMS if contains_any(normalized_query, term)]
         if requested_accessories:
             queries = [value for value in dict.fromkeys([analysis.busqueda, *requested_accessories]) if value]
-            return await self.vtex.search_many(queries)
+            return await self.vtex.search_many(queries, order_by=order)
         if analysis.categoria == "consola" and analysis.busqueda != analysis.categoria:
             queries = [
                 value
@@ -349,7 +355,7 @@ class ChatService:
                 )
                 if value
             ]
-            return await self.vtex.search_many(queries)
+            return await self.vtex.search_many(queries, order_by=order)
         return await self.vtex.search(
             analysis.busqueda or analysis.marca or analysis.categoria, order_by=order
         )
@@ -394,6 +400,8 @@ class ChatService:
 
     @staticmethod
     def _filter_products(products: list[Product], analysis: QueryAnalysis) -> list[Product]:
+        if analysis.intencion == IntentType.COMPARAR_PRODUCTOS and analysis.productos_comparacion:
+            return ChatService._filter_comparison_products(products, analysis)
         result = rank_catalog_products(products, analysis)
         if analysis.marca:
             brand = normalize(analysis.marca)
@@ -419,6 +427,35 @@ class ChatService:
             ]
         count = min(analysis.cantidad or 5, 5)
         return result[:count]
+
+    @staticmethod
+    def _filter_comparison_products(
+        products: list[Product], analysis: QueryAnalysis
+    ) -> list[Product]:
+        selected: list[Product] = []
+        seen: set[str] = set()
+        intent_service = IntentService()
+        for comparison in analysis.productos_comparacion:
+            comparison_analysis = intent_service.analyze(comparison)
+            comparison_analysis.categoria = analysis.categoria or comparison_analysis.categoria
+            exact_matches = rank_catalog_products(products, comparison_analysis)
+            candidates = exact_matches
+            if not candidates and comparison_analysis.marca and comparison_analysis.categoria:
+                fallback_analysis = QueryAnalysis(
+                    intencion=IntentType.BUSCAR_POR_MARCA,
+                    busqueda=f"{comparison_analysis.marca} {comparison_analysis.categoria}",
+                    marca=comparison_analysis.marca,
+                    categoria=comparison_analysis.categoria,
+                )
+                candidates = rank_catalog_products(products, fallback_analysis)
+            if not candidates:
+                continue
+            product = candidates[0]
+            key = product.id or product.nombre
+            if key not in seen:
+                seen.add(key)
+                selected.append(product)
+        return selected[:5]
 
     def _prior_catalog_query(self, history: list[Any]) -> str | None:
         for item in reversed(history):
