@@ -199,11 +199,13 @@ def _extract_prices(text: str) -> tuple[Decimal | None, Decimal | None]:
     if between:
         return decimal(between.group(1)), decimal(between.group(2))
     minimum = _extract_identifier(
-        r"(?:desde|mayor(?:es)?\s+a|mas\s+de|mas\s+que|minimo|min)\s+(\d+(?:[.,]\d+)?)",
+        r"(?:desde|mayor(?:es)?\s+a|mas\s+de|mas\s+que|minimo|min)\s+"
+        r"(\d+(?:[.,]\d+)?)(?![a-z0-9])",
         normalized,
     )
     maximum = _extract_identifier(
-        r"(?:hasta|menor(?:es)?\s+a|menos\s+de|debajo\s+de|por\s+debajo\s+de|maximo|max)\s+(\d+(?:[.,]\d+)?)",
+        r"(?:hasta|menor(?:es)?\s+a|menos\s+de|debajo\s+de|por\s+debajo\s+de|maximo|max)\s+"
+        r"(\d+(?:[.,]\d+)?)(?![a-z0-9])",
         normalized,
     )
     return decimal(minimum), decimal(maximum)

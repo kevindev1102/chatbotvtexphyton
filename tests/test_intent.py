@@ -74,3 +74,13 @@ def test_long_greeting_does_not_contaminate_product_search() -> None:
     assert analysis.busqueda == "laptop lenovo"
     assert analysis.marca == "lenovo"
     assert analysis.categoria == "laptop"
+
+
+def test_product_specs_are_not_misread_as_price_limits() -> None:
+    analysis = IntentService().analyze(
+        "dime las características del iPhone 17 Pro Max 5G 256GB"
+    )
+
+    assert analysis.busqueda == "iphone 17 pro max 5g 256gb"
+    assert analysis.precio_minimo is None
+    assert analysis.precio_maximo is None
