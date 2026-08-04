@@ -108,6 +108,10 @@ FILLER_WORDS = {
     "tienes",
     "comparar",
     "compara",
+    "comparando",
+    "comparame",
+    "compararme",
+    "comparacion",
     "versus",
     "vs",
     "entre",
@@ -266,9 +270,13 @@ def _detect_intent(text: str, identifiers: dict[str, str | None]) -> IntentType:
         re.search(r"\b(?:cual|que)\b.*\b(?:mejor|conviene)\b", text)
         and re.search(r"\s+o\s+", text)
     )
-    if natural_comparison or contains_any(
-        text, "compara", "comparar", "comparacion", "vs", "versus", "contra"
-    ):
+    comparison_request = bool(
+        re.search(
+            r"\bcompar(?:a(?:me|ndo)?|ar(?:me)?|acion|e(?:me)?)\b",
+            text,
+        )
+    )
+    if natural_comparison or comparison_request or contains_any(text, "vs", "versus", "contra"):
         return IntentType.COMPARAR_PRODUCTOS
     if contains_any(text, "para que sirve", "que es", "como funciona", "diferencia entre", "explicame"):
         return IntentType.CONSULTA_GENERAL
@@ -332,10 +340,15 @@ def _detect_intent(text: str, identifiers: dict[str, str | None]) -> IntentType:
 
 def _comparison_terms(text: str) -> list[str]:
     normalized = normalize(text)
-    cleaned = re.sub(r"^(?:compara|comparar|comparacion)(?:\s+(?:un|una|el|la))?\s+", "", normalized)
+    comparison_verb = r"compar(?:a(?:me|ndo)?|ar(?:me)?|acion|e(?:me)?)"
+    cleaned = re.sub(
+        rf"^.*?\b{comparison_verb}\b(?:\s+(?:entre|el|la|los|las|un|una|de|del))?\s*",
+        "",
+        normalized,
+    )
     if re.search(r"\s+o\s+", cleaned) and re.search(r"\b(?:mejor|conviene)\b", cleaned):
         cleaned = re.sub(r"^.*?\b(?:mejor|conviene)\b\s*", "", cleaned)
-    parts = re.split(r"\s+(?:vs|versus|contra|con|o)\s+", cleaned, maxsplit=1)
+    parts = re.split(r"\s+(?:vs|versus|contra|con|o|y)\s+", cleaned, maxsplit=1)
     return [_clean_search(part) for part in parts if _clean_search(part)] if len(parts) == 2 else []
 
 
