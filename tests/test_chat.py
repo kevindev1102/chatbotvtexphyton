@@ -310,11 +310,6 @@ async def test_natural_phone_comparison_searches_models_separately_with_brand_fa
         disponible=True,
     )
     vtex.search_many.return_value = [samsung_case, samsung_alternative, iphone]
-    ai.answer.return_value = (
-        "No encontré un Samsung S26 disponible; como alternativa está el Samsung A56. "
-        "El iPhone 17 es la opción más potente de las encontradas."
-    )
-
     response = await chat.process(
         ChatRequest(mensaje="¿Qué celular es mejor, el Samsung S26 o el iPhone 17?")
     )
@@ -324,12 +319,40 @@ async def test_natural_phone_comparison_searches_models_separately_with_brand_fa
     assert "samsung s26" in queries
     assert "iphone 17" in queries
     assert "samsung celular" in queries
-    answer_products = ai.answer.await_args.args[2]
-    assert [product.nombre for product in answer_products] == [
-        "Celular Samsung A56 5G 256GB",
-        "iPhone 17 5G 256GB",
+    assert "Celular Samsung A56 5G 256GB" in response.respuesta
+    assert "iPhone 17 5G 256GB" in response.respuesta
+    ai.answer.assert_not_awaited()
+
+
+async def test_comparison_answer_uses_catalog_specs_without_ai() -> None:
+    chat, vtex, _, ai = service()
+    vtex.search_many.return_value = [
+        Product(
+            nombre="iPhone 17 Pro 512GB",
+            marca="Apple",
+            categorias=["/Celulares/Apple/"],
+            precio=6699,
+            disponible=True,
+            caracteristicas={"Procesador": ["Apple A19 Pro"], "Batería": ["3988 mAh"]},
+        ),
+        Product(
+            nombre="Celular Samsung Galaxy S26 Ultra 512GB",
+            marca="Samsung",
+            categorias=["/Celulares/Samsung/"],
+            precio=5199,
+            disponible=True,
+            caracteristicas={"Procesador": ["Snapdragon 8 Elite"], "Batería": ["5000 mAh"]},
+        ),
     ]
-    assert "No encontré un Samsung S26" in response.respuesta
+
+    response = await chat.process(
+        ChatRequest(mensaje="Compara el iPhone 17 contra el Samsung Galaxy S26")
+    )
+
+    assert "Apple A19 Pro" in response.respuesta
+    assert "Snapdragon 8 Elite" in response.respuesta
+    assert "S/ 1.500,00 menos" in response.respuesta
+    ai.answer.assert_not_awaited()
 
 
 async def test_specific_product_image_is_not_repeated_when_already_in_history() -> None:

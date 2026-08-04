@@ -160,7 +160,9 @@ class ChatService:
                 imagen=self._single_product_image([selected_product], analysis, history),
             )
 
-        if analysis.intencion in {
+        if analysis.intencion == IntentType.COMPARAR_PRODUCTOS:
+            answer = self._comparison_answer(products, message)
+        elif analysis.intencion in {
             IntentType.BUSCAR_PRODUCTO,
             IntentType.LISTAR_POR_CATEGORIA,
             IntentType.BUSCAR_POR_MARCA,
@@ -755,6 +757,72 @@ class ChatService:
             stock = "disponible" if product.disponible else "agotado"
             lines.append(f"• {product.nombre} — {price} — {stock}")
         return "\n".join(lines)
+
+    def _comparison_answer(self, products: list[Product], message: str) -> str:
+        similarity_request = contains_any(
+            message,
+            "caracteristicas iguales",
+            "caracteristicas similares",
+            "mismas caracteristicas",
+            "similar a",
+            "parecido a",
+            "parecida a",
+            "equivalente a",
+            "alternativa a",
+        )
+        title = (
+            "📊 Esta es la alternativa más cercana que encontré en el catálogo:"
+            if similarity_request
+            else "📊 Comparación con datos actuales del catálogo:"
+        )
+        lines = [title]
+        for product in products[:2]:
+            price = self._price(product.precio) if product.precio is not None else "precio no disponible"
+            lines.append(f"• {product.nombre} — {price}")
+            facts = self._comparison_facts(product)
+            if facts:
+                lines.append(f"  {' · '.join(facts)}")
+
+        priced = [product for product in products[:2] if product.precio is not None]
+        if len(priced) == 2 and priced[0].precio != priced[1].precio:
+            cheaper = min(priced, key=lambda product: product.precio or Decimal("Infinity"))
+            difference = abs(priced[0].precio - priced[1].precio)
+            lines.append(
+                f"💰 {cheaper.nombre.split(',', 1)[0]} cuesta {self._price(difference)} menos."
+            )
+        if len(products) < 2:
+            lines.append("No pude confirmar un segundo producto disponible para completar la comparación.")
+        else:
+            lines.append("La mejor opción depende de qué priorices: precio, cámara, batería o sistema operativo.")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _comparison_facts(product: Product) -> list[str]:
+        wanted = (
+            "Procesador",
+            "Memoria RAM",
+            "Memoria Interna",
+            "Tamaño de pantalla",
+            "Cámara trasera",
+            "Cámara frontal",
+            "Batería",
+            "Sistema operativo",
+        )
+        normalized_specs = {
+            normalize(name): (name, values)
+            for name, values in product.caracteristicas.items()
+            if values
+        }
+        facts: list[str] = []
+        for label in wanted:
+            entry = normalized_specs.get(normalize(label))
+            if not entry:
+                continue
+            name, values = entry
+            facts.append(f"{name}: {', '.join(values[:2])}")
+            if len(facts) == 6:
+                break
+        return facts
 
     @staticmethod
     def _single_product_image(

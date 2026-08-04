@@ -270,13 +270,29 @@ def _detect_intent(text: str, identifiers: dict[str, str | None]) -> IntentType:
         re.search(r"\b(?:cual|que)\b.*\b(?:mejor|conviene)\b", text)
         and re.search(r"\s+o\s+", text)
     )
+    similarity_comparison = contains_any(
+        text,
+        "caracteristicas iguales",
+        "caracteristicas similares",
+        "mismas caracteristicas",
+        "similar a",
+        "parecido a",
+        "parecida a",
+        "equivalente a",
+        "alternativa a",
+    )
     comparison_request = bool(
         re.search(
             r"\bcompar(?:a(?:me|ndo)?|ar(?:me)?|acion|e(?:me)?)\b",
             text,
         )
     )
-    if natural_comparison or comparison_request or contains_any(text, "vs", "versus", "contra"):
+    if (
+        natural_comparison
+        or similarity_comparison
+        or comparison_request
+        or contains_any(text, "vs", "versus", "contra")
+    ):
         return IntentType.COMPARAR_PRODUCTOS
     if contains_any(text, "para que sirve", "que es", "como funciona", "diferencia entre", "explicame"):
         return IntentType.CONSULTA_GENERAL
@@ -340,6 +356,9 @@ def _detect_intent(text: str, identifiers: dict[str, str | None]) -> IntentType:
 
 def _comparison_terms(text: str) -> list[str]:
     normalized = normalize(text)
+    similarity_terms = _similarity_comparison_terms(normalized)
+    if similarity_terms:
+        return similarity_terms
     comparison_verb = r"compar(?:a(?:me|ndo)?|ar(?:me)?|acion|e(?:me)?)"
     cleaned = re.sub(
         rf"^.*?\b{comparison_verb}\b(?:\s+(?:entre|el|la|los|las|un|una|de|del))?\s*",
@@ -350,6 +369,35 @@ def _comparison_terms(text: str) -> list[str]:
         cleaned = re.sub(r"^.*?\b(?:mejor|conviene)\b\s*", "", cleaned)
     parts = re.split(r"\s+(?:vs|versus|contra|con|o|y)\s+", cleaned, maxsplit=1)
     return [_clean_search(part) for part in parts if _clean_search(part)] if len(parts) == 2 else []
+
+
+def _similarity_comparison_terms(text: str) -> list[str]:
+    marker = (
+        r"(?:caracteristicas\s+(?:iguales|similares)(?:\s+a\s+las?)?\s+(?:de|del)|"
+        r"mismas\s+caracteristicas\s+(?:de|del)|"
+        r"(?:similar|parecid[oa]|equivalente|alternativa)\s+a(?:\s+la|\s+el)?)"
+    )
+    reference_match = re.search(rf"\b{marker}\s+(.+)$", text)
+    if not reference_match:
+        return []
+    reference = _clean_search(reference_match.group(1))
+    prefix = text[: reference_match.start()]
+    brand = next(
+        (candidate for candidate in KNOWN_BRANDS if re.search(rf"\b{candidate}\b", prefix)),
+        None,
+    )
+    category = next(
+        (
+            candidate
+            for candidate in ("laptop", "celular", "tablet", "monitor", "televisor", "consola")
+            if re.search(rf"\b{candidate}", prefix)
+        ),
+        None,
+    )
+    alternative = " ".join(value for value in (brand, category) if value)
+    if not reference or not alternative:
+        return []
+    return [reference, alternative]
 
 
 def _clean_search(text: str) -> str:

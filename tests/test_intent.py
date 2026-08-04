@@ -55,6 +55,25 @@ def test_compare_me_request_with_and_is_a_two_product_comparison() -> None:
     assert analysis.productos_comparacion == ["iphone 17", "samsung s26"]
 
 
+def test_similar_brand_product_request_becomes_comparison() -> None:
+    analysis = IntentService().analyze(
+        "¿Hay algún celular Samsung que tenga características iguales a las del iPhone 17?"
+    )
+
+    assert analysis.intencion == IntentType.COMPARAR_PRODUCTOS
+    assert analysis.productos_comparacion == ["iphone 17", "samsung celular"]
+    assert analysis.categoria == "celular"
+
+
+def test_equivalent_product_request_becomes_comparison() -> None:
+    analysis = IntentService().analyze(
+        "Quiero una laptop Lenovo equivalente a la laptop Asus Zenbook"
+    )
+
+    assert analysis.intencion == IntentType.COMPARAR_PRODUCTOS
+    assert analysis.productos_comparacion == ["laptop asus zenbook", "lenovo laptop"]
+
+
 def test_sugerirme_is_a_clean_recommendation_query() -> None:
     analysis = IntentService().analyze("¿Puedes sugerirme celulares?")
 
