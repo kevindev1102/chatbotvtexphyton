@@ -1,6 +1,3 @@
-import pytest
-from pydantic import ValidationError
-
 from app.models import ChatRequest, ChatResponse, IntentType
 
 
@@ -16,14 +13,20 @@ def test_accepts_compatible_java_payload() -> None:
     assert request.historial[0].openai_role() == "user"
 
 
-def test_rejects_more_than_ten_history_messages() -> None:
-    with pytest.raises(ValidationError):
-        ChatRequest.model_validate(
-            {
-                "mensaje": "hola",
-                "historial": [{"rol": "usuario", "contenido": "x"}] * 11,
-            }
-        )
+def test_keeps_last_ten_when_widget_sends_full_history() -> None:
+    request = ChatRequest.model_validate(
+        {
+            "mensaje": "hola",
+            "historial": [
+                {"rol": "usuario", "contenido": f"mensaje {index}"}
+                for index in range(15)
+            ],
+        }
+    )
+
+    assert len(request.historial) == 10
+    assert request.historial[0].contenido == "mensaje 5"
+    assert request.historial[-1].contenido == "mensaje 14"
 
 
 def test_accepts_optional_geolocation() -> None:

@@ -77,6 +77,15 @@ class ChatRequest(BaseModel):
     historial: list[HistoryMessage] = Field(default_factory=list, max_length=10)
     ubicacion: GeoLocation | None = None
 
+    @field_validator("historial", mode="before")
+    @classmethod
+    def keep_recent_history(cls, value: Any) -> Any:
+        # El widget puede enviar la conversación completa. Conservamos la ventana
+        # reciente antes de validar para evitar respuestas 422 al superar 10 mensajes.
+        if isinstance(value, list):
+            return value[-10:]
+        return value
+
     @field_validator("mensaje")
     @classmethod
     def trim_message(cls, value: str) -> str:

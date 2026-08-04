@@ -124,8 +124,9 @@ no vuelve a incluirse si el producto ya apareció en una respuesta previa del hi
 consultas generales, de soporte o seguimientos del mismo producto, la respuesta conserva
 únicamente `respuesta` e `intencion`.
 
-El historial es opcional, admite hasta 10 mensajes y acepta los roles
-`usuario`/`asistente` o `user`/`assistant`.
+El historial es opcional y acepta los roles `usuario`/`asistente` o `user`/`assistant`.
+El widget puede enviar la conversación completa; la API conserva automáticamente los 10
+mensajes más recientes para mantener el contexto sin rechazar conversaciones largas.
 
 `ubicacion` también es opcional. Se requiere para responder qué tiendas cercanas
 tienen el producto disponible para recojo. VTEX confirma la opción de recojo, pero
