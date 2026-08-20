@@ -179,6 +179,116 @@ def contains_any(text: str, *phrases: str) -> bool:
     return any(f" {normalize(phrase)} " in normalized for phrase in phrases)
 
 
+def _contains_transfer_request(text: str) -> bool:
+    if normalize(text) in {"asesor", "agente", "operador", "persona", "humano"}:
+        return True
+    return contains_any(
+        text,
+        "hablar con un asesor",
+        "hablar con asesor",
+        "hablar con un agente",
+        "hablar con agente",
+        "hablar con una persona",
+        "hablar con alguien",
+        "asesor humano",
+        "agente humano",
+        "atencion humana",
+        "asesoria humana",
+        "comunicarme con un asesor",
+        "comunicarme con un agente",
+        "contactar un asesor",
+        "contactar a un asesor",
+        "quiero un asesor",
+        "necesito un asesor",
+        "asesor por favor",
+        "hablar con operador",
+        "hablar con un operador",
+        "transferirme",
+        "transfiereme",
+        "me transfieras",
+        "quiero que me transfieran",
+        "derivame",
+        "pasame con",
+    )
+
+
+def _is_only_social_message(text: str, phrases: tuple[str, ...], allowed_words: set[str]) -> bool:
+    normalized = normalize(text)
+    if not any(contains_any(normalized, phrase) for phrase in phrases):
+        return False
+    return set(normalized.split()).issubset(allowed_words)
+
+
+def _is_greeting(text: str) -> bool:
+    return _is_only_social_message(
+        text,
+        ("hola", "holaa", "buenos dias", "buenas tardes", "buenas noches", "buenas", "hey"),
+        {
+            "hola",
+            "holaa",
+            "buenos",
+            "buenas",
+            "dias",
+            "tardes",
+            "noches",
+            "hey",
+            "como",
+            "estas",
+            "que",
+            "tal",
+            "coolbot",
+        },
+    )
+
+
+def _is_farewell(text: str) -> bool:
+    return _is_only_social_message(
+        text,
+        (
+            "adios",
+            "hasta luego",
+            "hasta pronto",
+            "nos vemos",
+            "chau",
+            "chao",
+            "eso es todo",
+            "nada mas",
+            "muchas gracias",
+            "gracias",
+            "gracias por todo",
+            "me despido",
+            "bye",
+        ),
+        {
+            "adios",
+            "hasta",
+            "luego",
+            "pronto",
+            "nos",
+            "vemos",
+            "chau",
+            "chao",
+            "eso",
+            "es",
+            "todo",
+            "nada",
+            "mas",
+            "gracias",
+            "muchas",
+            "muchisimas",
+            "por",
+            "la",
+            "ayuda",
+            "tu",
+            "listo",
+            "seria",
+            "me",
+            "despido",
+            "bye",
+        },
+    )
+
+
 def _singular(word: str) -> str:
     if len(word) <= 4 or word.isdigit() or word in {"airpods", "series"} or word.endswith("pods"):
         return word
@@ -243,6 +353,12 @@ def _support_identifiers(text: str) -> dict[str, str | None]:
 
 
 def _detect_intent(text: str, identifiers: dict[str, str | None]) -> IntentType:
+    if _contains_transfer_request(text):
+        return IntentType.TRANSFERENCIA
+    if _is_farewell(text):
+        return IntentType.DESPEDIDA
+    if _is_greeting(text):
+        return IntentType.SALUDO
     if identifiers["serviceOrder"] or contains_any(
         text, "ods", "orden de servicio", "servicio tecnico", "reparacion"
     ):
@@ -474,6 +590,9 @@ class IntentService:
             not intent.is_support
             and intent
             not in {
+                IntentType.SALUDO,
+                IntentType.DESPEDIDA,
+                IntentType.TRANSFERENCIA,
                 IntentType.CONSULTA_GENERAL,
                 IntentType.PRODUCTOS_DESTACADOS,
             }

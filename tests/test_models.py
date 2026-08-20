@@ -41,15 +41,17 @@ def test_accepts_optional_geolocation() -> None:
     assert request.ubicacion.longitud == -77.03
 
 
-def test_optional_image_keeps_original_response_shape_when_absent() -> None:
+def test_response_includes_transfer_and_farewell_flags_by_default() -> None:
     response = ChatResponse(
         respuesta="Encontré un producto",
         intencion=IntentType.BUSCAR_PRODUCTO,
     )
 
-    payload = response.model_dump(mode="json", exclude_none=True)
+    payload = response.model_dump(mode="json", exclude_none=True, by_alias=True)
 
     assert payload == {
         "respuesta": "Encontré un producto",
         "intencion": "BUSCAR_PRODUCTO",
+        "esTransferencia": False,
+        "esDespedida": False,
     }

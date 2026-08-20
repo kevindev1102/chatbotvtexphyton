@@ -44,6 +44,8 @@ class ChatService:
     async def process(self, request: ChatRequest) -> ChatResponse:
         message = request.mensaje.strip()
         history = request.historial[-10:]
+        if self._accepts_transfer_offer(message, history):
+            return self._transfer_response()
         asks_store_stock = self._asks_store_availability(message)
         named_location = find_named_location(message) if request.ubicacion is None else None
 
@@ -78,6 +80,23 @@ class ChatService:
         local_analysis = self.intent.analyze(analysis_message)
         if referenced_product:
             local_analysis.cantidad = 1
+        if local_analysis.intencion == IntentType.SALUDO:
+            return ChatResponse(
+                intencion=IntentType.SALUDO,
+                respuesta=(
+                    "¡Hola! 👋 Soy Coolbot, el asistente virtual de Coolbox Perú. "
+                    "Puedo ayudarte con productos, precios, stock, tiendas y pedidos. "
+                    "¿Qué deseas consultar?"
+                ),
+            )
+        if local_analysis.intencion == IntentType.DESPEDIDA:
+            return ChatResponse(
+                intencion=IntentType.DESPEDIDA,
+                respuesta="¡Gracias por comunicarte con Coolbox! 😊 Que tengas un excelente día.",
+                es_despedida=True,
+            )
+        if local_analysis.intencion == IntentType.TRANSFERENCIA:
+            return self._transfer_response()
         if local_analysis.intencion.is_support:
             return await self._process_support(local_analysis, history, message)
 
@@ -178,6 +197,8 @@ class ChatService:
                 answer = self._local_product_answer(products)
             else:
                 answer = self._deterministic_product_answer(analysis.intencion, products)
+                if analysis.intencion == IntentType.CONSULTAR_CARACTERISTICAS:
+                    answer = self._with_transfer_offer(answer)
         else:
             try:
                 if used_ai_analysis:
@@ -191,6 +212,49 @@ class ChatService:
             intencion=analysis.intencion,
             imagen=self._single_product_image(products, analysis, history),
         )
+
+    @staticmethod
+    def _transfer_response() -> ChatResponse:
+        return ChatResponse(
+            intencion=IntentType.TRANSFERENCIA,
+            respuesta=(
+                "Claro, te comunicaré con un asesor de Coolbox para que continúe ayudándote. 👩‍💻"
+            ),
+            es_transferencia=True,
+        )
+
+    @staticmethod
+    def _with_transfer_offer(answer: str) -> str:
+        return (
+            f"{answer}\n\nSi deseas asesoría personalizada sobre este producto, "
+            "puedo transferirte con un asesor. ¿Quieres que te comunique?"
+        )
+
+    @staticmethod
+    def _accepts_transfer_offer(message: str, history: list[Any]) -> bool:
+        affirmation = normalize(message) in {
+            "si",
+            "si por favor",
+            "claro",
+            "ok",
+            "okay",
+            "de acuerdo",
+            "quiero",
+            "acepto",
+        }
+        if not affirmation:
+            return False
+        for item in reversed(history):
+            if getattr(item, "rol", "") not in {"asistente", "assistant"}:
+                continue
+            previous = getattr(item, "contenido", "")
+            return contains_any(
+                previous,
+                "puedo transferirte con un asesor",
+                "quieres que te comunique",
+                "hablar con un asesor",
+            )
+        return False
 
     async def _process_support(
         self, analysis: QueryAnalysis, history: list[Any], message: str

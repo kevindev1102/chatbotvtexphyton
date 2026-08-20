@@ -22,6 +22,87 @@ def service() -> tuple[ChatService, AsyncMock, AsyncMock, AsyncMock]:
     return ChatService(IntentService(), vtex, coolbox, ai), vtex, coolbox, ai
 
 
+async def test_greeting_is_answered_without_external_calls() -> None:
+    chat, vtex, coolbox, ai = service()
+
+    response = await chat.process(ChatRequest(mensaje="Hola, ¿cómo estás?"))
+
+    assert response.intencion == IntentType.SALUDO
+    assert "Coolbot" in response.respuesta
+    assert response.es_transferencia is False
+    assert response.es_despedida is False
+    vtex.search.assert_not_awaited()
+    coolbox.orders_by_number.assert_not_awaited()
+    ai.answer.assert_not_awaited()
+
+
+async def test_farewell_sets_farewell_flag() -> None:
+    chat, vtex, _, ai = service()
+
+    response = await chat.process(ChatRequest(mensaje="Muchas gracias, eso es todo"))
+
+    assert response.intencion == IntentType.DESPEDIDA
+    assert response.es_despedida is True
+    assert response.es_transferencia is False
+    vtex.search.assert_not_awaited()
+    ai.answer.assert_not_awaited()
+
+
+async def test_explicit_agent_request_sets_transfer_flag() -> None:
+    chat, vtex, _, ai = service()
+
+    response = await chat.process(ChatRequest(mensaje="Quiero hablar con un asesor humano"))
+
+    assert response.intencion == IntentType.TRANSFERENCIA
+    assert response.es_transferencia is True
+    assert response.es_despedida is False
+    vtex.search.assert_not_awaited()
+    ai.answer.assert_not_awaited()
+
+
+async def test_affirmation_after_transfer_offer_sets_transfer_flag() -> None:
+    chat, vtex, _, _ = service()
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="Sí, por favor",
+            historial=[
+                HistoryMessage(
+                    rol="asistente",
+                    contenido=(
+                        "Puedo transferirte con un asesor. ¿Quieres que te comunique?"
+                    ),
+                )
+            ],
+        )
+    )
+
+    assert response.intencion == IntentType.TRANSFERENCIA
+    assert response.es_transferencia is True
+    vtex.search.assert_not_awaited()
+
+
+async def test_product_characteristics_offer_transfer_without_triggering_it() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    vtex.search.return_value = [
+        Product(
+            nombre="iPhone 17 Pro 512GB",
+            disponible=True,
+            caracteristicas={"Procesador": ["Apple A19 Pro"]},
+        )
+    ]
+
+    response = await chat.process(
+        ChatRequest(mensaje="Dime las características del iPhone 17 Pro")
+    )
+
+    assert response.intencion == IntentType.CONSULTAR_CARACTERISTICAS
+    assert "puedo transferirte con un asesor" in response.respuesta
+    assert response.es_transferencia is False
+    assert response.es_despedida is False
+
+
 async def test_order_query_is_routed_locally_without_ai() -> None:
     chat, vtex, coolbox, ai = service()
     vtex.can_query_orders = False

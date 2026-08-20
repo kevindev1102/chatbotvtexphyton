@@ -115,9 +115,18 @@ Respuesta:
 {
   "respuesta": "📦 Disponibilidad general del catálogo: ...",
   "intencion": "CONSULTAR_STOCK",
-  "imagen": "https://coolboxpe.vteximg.com.br/.../iphone-15.jpg"
+  "imagen": "https://coolboxpe.vteximg.com.br/.../iphone-15.jpg",
+  "esTransferencia": false,
+  "esDespedida": false
 }
 ```
+
+`esTransferencia` cambia a `true` cuando el cliente solicita hablar con una persona o acepta
+una transferencia previamente ofrecida. `esDespedida` cambia a `true` cuando el cliente cierra
+la conversación. Ambos campos siempre se incluyen y su valor predeterminado es `false`.
+
+Cuando el cliente consulta características de un producto, Coolbot responde la consulta y ofrece
+asesoría humana. La transferencia solo se activa cuando el cliente la solicita o confirma.
 
 `imagen` solo aparece cuando se consulta un producto concreto. Se envía una única imagen y
 no vuelve a incluirse si el producto ya apareció en una respuesta previa del historial. En

@@ -2,6 +2,23 @@ from app.intent import IntentService
 from app.models import IntentType
 
 
+def test_detects_greeting_without_confusing_product_greeting() -> None:
+    service = IntentService()
+
+    assert service.analyze("Hola, ¿cómo estás?").intencion == IntentType.SALUDO
+    assert service.analyze("Hola, ¿qué iPhones tienes?").intencion != IntentType.SALUDO
+
+
+def test_detects_farewell() -> None:
+    assert IntentService().analyze("Muchas gracias, eso es todo").intencion == IntentType.DESPEDIDA
+
+
+def test_detects_explicit_agent_transfer() -> None:
+    analysis = IntentService().analyze("Quiero hablar con un asesor humano")
+
+    assert analysis.intencion == IntentType.TRANSFERENCIA
+
+
 def test_detects_product_price_and_query() -> None:
     analysis = IntentService().analyze("¿Cuánto está el Samsung Galaxy S25 Ultra?")
 

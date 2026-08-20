@@ -8,6 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class IntentType(StrEnum):
+    SALUDO = "SALUDO"
+    DESPEDIDA = "DESPEDIDA"
+    TRANSFERENCIA = "TRANSFERENCIA"
     BUSCAR_PRODUCTO = "BUSCAR_PRODUCTO"
     LISTAR_POR_CATEGORIA = "LISTAR_POR_CATEGORIA"
     BUSCAR_POR_MARCA = "BUSCAR_POR_MARCA"
@@ -37,6 +40,9 @@ class IntentType(StrEnum):
     @property
     def requires_catalog(self) -> bool:
         return self not in {
+            self.SALUDO,
+            self.DESPEDIDA,
+            self.TRANSFERENCIA,
             self.CONSULTA_GENERAL,
             self.ACLARACION_REQUERIDA,
             self.CONSULTAR_PEDIDO,
@@ -95,9 +101,13 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     respuesta: str
     intencion: IntentType
     imagen: str | None = None
+    es_transferencia: bool = Field(default=False, alias="esTransferencia")
+    es_despedida: bool = Field(default=False, alias="esDespedida")
 
 
 class QueryAnalysis(BaseModel):
