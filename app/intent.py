@@ -40,6 +40,7 @@ FILLER_WORDS = {
     "como",
     "estas",
     "coolbot",
+    "bot",
     "ayuda",
     "ayudame",
     "quiero",
@@ -180,7 +181,39 @@ def contains_any(text: str, *phrases: str) -> bool:
 
 
 def _contains_transfer_request(text: str) -> bool:
-    if normalize(text) in {"asesor", "agente", "operador", "persona", "humano"}:
+    normalized = normalize(text)
+    human_role = bool(
+        re.search(r"\b(?:asesor|asesora|agente|operador|operadora|persona|humano|humana)\b", normalized)
+    )
+    if normalized in {"asesor", "asesora", "agente", "operador", "operadora", "persona", "humano"}:
+        return True
+    transfer_word = bool(re.search(r"\btransf(?:er\w*|ier\w*)\b", normalized))
+    financial_transfer = contains_any(
+        normalized,
+        "transferencia bancaria",
+        "transferencia de dinero",
+        "transferencia de pago",
+    )
+    request_word = contains_any(
+        normalized,
+        "quiero",
+        "necesito",
+        "solicito",
+        "deseo",
+        "puedes",
+        "podrias",
+        "por favor",
+    )
+    if transfer_word and not financial_transfer and (human_role or request_word):
+        return True
+    human_contact = bool(
+        re.search(
+            r"\b(?:habl\w*|comunic\w*|contact\w*|deriv\w*|pas\w*)\b.*"
+            r"\b(?:asesor|asesora|agente|operador|operadora|persona|humano|humana)\b",
+            normalized,
+        )
+    )
+    if human_contact:
         return True
     return contains_any(
         text,
@@ -222,7 +255,19 @@ def _is_only_social_message(text: str, phrases: tuple[str, ...], allowed_words: 
 def _is_greeting(text: str) -> bool:
     return _is_only_social_message(
         text,
-        ("hola", "holaa", "buenos dias", "buenas tardes", "buenas noches", "buenas", "hey"),
+        (
+            "hola",
+            "holaa",
+            "buenos dias",
+            "buenas tardes",
+            "buenas noches",
+            "buenas",
+            "hey",
+            "te estoy saludando",
+            "te saludo",
+            "solo saludaba",
+            "vengo a saludar",
+        ),
         {
             "hola",
             "holaa",
@@ -237,6 +282,16 @@ def _is_greeting(text: str) -> bool:
             "que",
             "tal",
             "coolbot",
+            "bot",
+            "te",
+            "estoy",
+            "saludando",
+            "saludo",
+            "solo",
+            "saludaba",
+            "vengo",
+            "a",
+            "saludar",
         },
     )
 

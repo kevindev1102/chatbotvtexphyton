@@ -6,7 +6,12 @@ def test_detects_greeting_without_confusing_product_greeting() -> None:
     service = IntentService()
 
     assert service.analyze("Hola, ¿cómo estás?").intencion == IntentType.SALUDO
+    assert service.analyze("hola bot").intencion == IntentType.SALUDO
+    assert service.analyze("te estoy saludando").intencion == IntentType.SALUDO
     assert service.analyze("Hola, ¿qué iPhones tienes?").intencion != IntentType.SALUDO
+    product_greeting = service.analyze("Hola bot, ¿tienes iPhones?")
+    assert product_greeting.intencion != IntentType.SALUDO
+    assert product_greeting.busqueda == "iphone"
 
 
 def test_detects_farewell() -> None:
@@ -17,6 +22,22 @@ def test_detects_explicit_agent_transfer() -> None:
     analysis = IntentService().analyze("Quiero hablar con un asesor humano")
 
     assert analysis.intencion == IntentType.TRANSFERENCIA
+
+
+def test_detects_transfer_with_agent_word_order() -> None:
+    service = IntentService()
+
+    assert (
+        service.analyze("necesito una transferencia con agente").intencion
+        == IntentType.TRANSFERENCIA
+    )
+    assert service.analyze("¿Me podrías derivar a una operadora?").intencion == IntentType.TRANSFERENCIA
+
+
+def test_bank_transfer_is_not_agent_transfer() -> None:
+    analysis = IntentService().analyze("Necesito información sobre transferencia bancaria")
+
+    assert analysis.intencion != IntentType.TRANSFERENCIA
 
 
 def test_detects_product_price_and_query() -> None:

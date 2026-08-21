@@ -36,6 +36,18 @@ async def test_greeting_is_answered_without_external_calls() -> None:
     ai.answer.assert_not_awaited()
 
 
+async def test_screenshot_greeting_variants_do_not_search_catalog() -> None:
+    for message in ("hola bot", "te estoy saludando"):
+        chat, vtex, _, _ = service()
+
+        response = await chat.process(ChatRequest(mensaje=message))
+
+        assert response.intencion == IntentType.SALUDO
+        assert response.es_transferencia is False
+        assert response.es_despedida is False
+        vtex.search.assert_not_awaited()
+
+
 async def test_farewell_sets_farewell_flag() -> None:
     chat, vtex, _, ai = service()
 
@@ -58,6 +70,19 @@ async def test_explicit_agent_request_sets_transfer_flag() -> None:
     assert response.es_despedida is False
     vtex.search.assert_not_awaited()
     ai.answer.assert_not_awaited()
+
+
+async def test_screenshot_transfer_phrase_sets_transfer_flag() -> None:
+    chat, vtex, _, _ = service()
+
+    response = await chat.process(
+        ChatRequest(mensaje="necesito una transferencia con agente")
+    )
+
+    assert response.intencion == IntentType.TRANSFERENCIA
+    assert response.es_transferencia is True
+    assert response.es_despedida is False
+    vtex.search.assert_not_awaited()
 
 
 async def test_affirmation_after_transfer_offer_sets_transfer_flag() -> None:
