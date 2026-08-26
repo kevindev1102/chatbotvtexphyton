@@ -80,6 +80,10 @@ class ChatService:
         local_analysis = self.intent.analyze(analysis_message)
         if referenced_product:
             local_analysis.cantidad = 1
+            # El nombre recuperado del historial puede contener especificaciones como
+            # "máx. 5 kg". No deben convertirse en presupuestos que excluyan el producto.
+            local_analysis.precio_minimo = None
+            local_analysis.precio_maximo = None
         if local_analysis.intencion == IntentType.SALUDO:
             return ChatResponse(
                 intencion=IntentType.SALUDO,
@@ -542,17 +546,35 @@ class ChatService:
     def _referenced_product_from_history(message: str, history: list[Any]) -> str | None:
         normalized_message = normalize(message)
         ordinal_positions = {
+            "primer": 0,
             "primero": 0,
             "primera": 0,
             "segundo": 1,
             "segunda": 1,
+            "tercer": 2,
             "tercero": 2,
             "tercera": 2,
+            "cuarto": 3,
+            "cuarta": 3,
+            "quinto": 4,
+            "quinta": 4,
+            "ultimo": -1,
+            "ultima": -1,
         }
         position = next(
             (index for word, index in ordinal_positions.items() if contains_any(normalized_message, word)),
             None,
         )
+        numbered_reference = re.search(
+            r"\b(?:opcion|modelo|producto|numero)\s*(?:nro\s*)?([1-5])\b",
+            normalized_message,
+        )
+        if position is None and numbered_reference:
+            position = int(numbered_reference.group(1)) - 1
+        if position is None and contains_any(normalized_message, "el de arriba", "la de arriba"):
+            position = 0
+        if position is None and contains_any(normalized_message, "el de abajo", "la de abajo"):
+            position = -1
         refers_to_single_product = contains_any(
             normalized_message,
             "este iphone",
@@ -575,7 +597,7 @@ class ChatService:
                     return names[0]
                 if names:
                     return None
-            elif position is not None and position < len(names):
+            elif position is not None and names and -len(names) <= position < len(names):
                 return names[position]
         return None
 

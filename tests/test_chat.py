@@ -656,6 +656,66 @@ async def test_ordinal_followup_uses_product_named_by_assistant() -> None:
     vtex.search.assert_awaited_once_with("ipad mini 128gb", order_by="OrderByPriceDESC")
 
 
+async def test_primer_modelo_followup_reuses_first_kitchen_scale() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    product = Product(
+        nombre="Balanza de cocina Camry EK8461H máx. 5 kg, con reloj y temporizador",
+        precio=109,
+        disponible=True,
+        categorias=["/Electrohogar/Balanzas de cocina/"],
+    )
+    vtex.search.return_value = [product]
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="el primer modelo me interesa",
+            historial=[
+                HistoryMessage(
+                    rol="asistente",
+                    contenido=(
+                        "🔎 Encontré estas opciones:\n"
+                        "• Balanza de cocina Camry EK8461H máx. 5 kg, con reloj y temporizador "
+                        "— S/ 109,00 — disponible\n"
+                        "• Balanza de cocina Camry EK9130-S383 máx. 5 kg, plataforma de vidrio "
+                        "— S/ 79,90 — disponible\n"
+                        "• Balanza de cocina Camry EK9610K máx. 5 kg — S/ 59,90 — disponible"
+                    ),
+                )
+            ],
+        )
+    )
+
+    assert response.intencion == IntentType.BUSCAR_PRODUCTO
+    assert "EK8461H" in response.respuesta
+    assert "primer interesa" not in str(vtex.search.await_args).lower()
+    assert "ek8461h" in str(vtex.search.await_args).lower()
+    assert response.respuesta.count("•") == 1
+
+
+async def test_numbered_and_last_product_references_use_history() -> None:
+    history = [
+        HistoryMessage(
+            rol="asistente",
+            contenido=(
+                "• Producto Alpha — S/ 30,00 — disponible\n"
+                "• Producto Beta — S/ 20,00 — disponible\n"
+                "• Producto Gamma — S/ 10,00 — disponible"
+            ),
+        )
+    ]
+
+    assert ChatService._referenced_product_from_history("me interesa el modelo 2", history) == (
+        "Producto Beta"
+    )
+    assert ChatService._referenced_product_from_history("quiero el último", history) == (
+        "Producto Gamma"
+    )
+    assert ChatService._referenced_product_from_history("quiero el de arriba", history) == (
+        "Producto Alpha"
+    )
+
+
 async def test_ordinal_followup_extracts_only_name_from_unformatted_sales_bullet() -> None:
     chat, vtex, _, ai = service()
     ai.analyze.side_effect = ExternalServiceError("offline")
