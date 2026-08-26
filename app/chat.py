@@ -349,7 +349,7 @@ class ChatService:
     def _vtex_order_answer(self, order: dict[str, Any]) -> str:
         order_id = str(order.get("orderId") or "").strip()
         status = str(order.get("statusDescription") or order.get("status") or "").strip()
-        creation_date = str(order.get("creationDate") or "").strip()
+        creation_date = self._date_only(order.get("creationDate"))
         items = [
             str(item.get("name") or "").strip()
             for item in order.get("items") or []
@@ -358,7 +358,7 @@ class ChatService:
         logistics = (order.get("shippingData") or {}).get("logisticsInfo") or []
         delivery_date = next(
             (
-                str(info.get("deliveryWindow") or info.get("shippingEstimateDate") or "").strip()
+                self._date_only(info.get("shippingEstimateDate") or info.get("deliveryWindow"))
                 for info in logistics
                 if isinstance(info, dict) and (info.get("deliveryWindow") or info.get("shippingEstimateDate"))
             ),
@@ -377,6 +377,22 @@ class ChatService:
         if items:
             lines.append(f"• Productos: {', '.join(items[:3])}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _date_only(value: Any) -> str:
+        if isinstance(value, dict):
+            value = (
+                value.get("endDateUtc")
+                or value.get("startDateUtc")
+                or value.get("endDate")
+                or value.get("startDate")
+            )
+        raw = str(value or "").strip()
+        match = re.search(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)", raw)
+        if match:
+            year, month, day = match.groups()
+            return f"{day}/{month}/{year}"
+        return raw.split("T", 1)[0]
 
     async def _catalog_products(self, analysis: QueryAnalysis) -> list[Product]:
         order = "OrderByPriceASC" if analysis.ordenar_por_menor_precio else "OrderByPriceDESC"
@@ -784,7 +800,7 @@ class ChatService:
                     self._field(item, "numero", "Pedido"),
                     self._field(item, "estado", "Estado"),
                     self._field(item, "mensajeEstado", "Detalle"),
-                    self._field(item, "fechaEntrega", "Entrega"),
+                    self._date_field(item, "fechaEntrega", "Entrega"),
                     self._field(item, "productos", "Productos", 180),
                 ]
                 lines.append(" · ".join(value for value in details if value))
@@ -829,6 +845,10 @@ class ChatService:
         if not value:
             return ""
         return f"{label}: {value[:limit]}"
+
+    def _date_field(self, item: dict[str, Any], key: str, label: str) -> str:
+        value = self._date_only(item.get(key))
+        return f"{label}: {value}" if value else ""
 
     def _deterministic_product_answer(self, intent: IntentType, products: list[Product]) -> str:
         if intent == IntentType.CONSULTAR_PRECIO:

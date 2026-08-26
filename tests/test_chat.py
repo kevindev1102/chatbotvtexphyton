@@ -154,6 +154,8 @@ async def test_order_query_is_routed_locally_without_ai() -> None:
                     "numero": "1234567890123-01",
                     "estado": "En ruta",
                     "mensajeEstado": "Tu pedido está en camino.",
+                    "fechaEntrega": "2026-08-24T15:34:03+00:00",
+                    "productos": "Silla ergonómica de oficina",
                 }
             ],
         }
@@ -163,6 +165,9 @@ async def test_order_query_is_routed_locally_without_ai() -> None:
 
     assert response.intencion == IntentType.CONSULTAR_PEDIDO
     assert "En ruta" in response.respuesta
+    assert "Entrega: 24/08/2026" in response.respuesta
+    assert "Productos: Silla ergonómica de oficina" in response.respuesta
+    assert "T15:" not in response.respuesta
     ai.analyze.assert_not_awaited()
     ai.answer.assert_not_awaited()
     coolbox.orders_by_number.assert_awaited_once_with("1234567890123-01")
@@ -186,7 +191,51 @@ async def test_order_number_uses_vtex_oms_when_credentials_are_available() -> No
     assert response.intencion == IntentType.CONSULTAR_PEDIDO
     assert "Preparando entrega" in response.respuesta
     assert "Audífonos Bluetooth" in response.respuesta
+    assert "Fecha de creación: 30/07/2026" in response.respuesta
+    assert "Entrega estimada: 01/08/2026" in response.respuesta
+    assert "T12:00:00Z" not in response.respuesta
+    assert "T18:00:00Z" not in response.respuesta
     vtex.get_order.assert_awaited_once_with("1234567890123-01")
+    coolbox.orders_by_number.assert_not_awaited()
+    ai.analyze.assert_not_awaited()
+
+
+async def test_bare_order_number_after_prompt_queries_order_and_keeps_products() -> None:
+    chat, vtex, coolbox, ai = service()
+    vtex.can_query_orders = True
+    vtex.get_order.return_value = {
+        "orderId": "1655843315411-01",
+        "statusDescription": "Facturado",
+        "creationDate": "2026-08-21T15:31:05.1689877+00:00",
+        "items": [{"name": "Silla ergonómica de oficina"}],
+        "shippingData": {
+            "logisticsInfo": [
+                {"shippingEstimateDate": "2026-08-24T15:34:03.8502022+00:00"}
+            ]
+        },
+    }
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="1655843315411-01",
+            historial=[
+                HistoryMessage(rol="usuario", contenido="Quisiera información de mi pedido"),
+                HistoryMessage(
+                    rol="asistente",
+                    contenido="Indícame el número de pedido o tu DNI/RUC/CEX para consultar su estado.",
+                ),
+            ],
+        )
+    )
+
+    assert response.intencion == IntentType.CONSULTAR_PEDIDO
+    assert "Pedido: 1655843315411-01" in response.respuesta
+    assert "Estado: Facturado" in response.respuesta
+    assert "Fecha de creación: 21/08/2026" in response.respuesta
+    assert "Entrega estimada: 24/08/2026" in response.respuesta
+    assert "Productos: Silla ergonómica de oficina" in response.respuesta
+    assert "T15:" not in response.respuesta
+    vtex.get_order.assert_awaited_once_with("1655843315411-01")
     coolbox.orders_by_number.assert_not_awaited()
     ai.analyze.assert_not_awaited()
 

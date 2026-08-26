@@ -61,6 +61,13 @@ def test_detects_order_without_sending_it_to_ai() -> None:
     assert analysis.order_id == "1234567890123-01"
 
 
+def test_bare_order_number_is_recognized_as_order_query() -> None:
+    analysis = IntentService().analyze("1655843315411-01")
+
+    assert analysis.intencion == IntentType.CONSULTAR_PEDIDO
+    assert analysis.order_id == "1655843315411-01"
+
+
 def test_where_to_buy_is_stock_not_existing_order() -> None:
     service = IntentService()
 

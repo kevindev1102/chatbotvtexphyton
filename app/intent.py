@@ -443,7 +443,7 @@ def _detect_intent(text: str, identifiers: dict[str, str | None]) -> IntentType:
         return IntentType.CONSULTAR_EXTORNO
     if contains_any(text, "devolucion de dinero", "nota de credito", "reembolso", "reembolsos", "ncr"):
         return IntentType.CONSULTAR_DEVOLUCION_DINERO
-    if (
+    if identifiers["orderId"] or (
         identifiers["documentNumber"] and contains_any(text, "dni", "ruc", "cex", "documento")
     ) or contains_any(
         text,
