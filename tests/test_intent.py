@@ -54,6 +54,14 @@ def test_detects_order_without_sending_it_to_ai() -> None:
     assert analysis.order_id == "1234567890123-01"
 
 
+def test_where_to_buy_is_stock_not_existing_order() -> None:
+    service = IntentService()
+
+    assert service.analyze("¿Dónde la puedo comprar?").intencion == IntentType.CONSULTAR_STOCK
+    assert service.analyze("¿En qué tienda la venden?").intencion == IntentType.CONSULTAR_STOCK
+    assert service.analyze("¿Dónde está mi compra?").intencion == IntentType.CONSULTAR_PEDIDO
+
+
 def test_detects_document_in_natural_sentence() -> None:
     analysis = IntentService().analyze("Mi DNI es 62022494")
 

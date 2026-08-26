@@ -10,7 +10,7 @@ from typing import Any
 from app.ai import OpenAIService
 from app.clients import CoolboxClient, VtexClient
 from app.errors import ExternalServiceError
-from app.intent import IntentService, contains_any, normalize
+from app.intent import IntentService, contains_any, is_purchase_location_request, normalize
 from app.locations import find_named_location, without_named_location
 from app.models import (
     ChatRequest,
@@ -648,13 +648,21 @@ class ChatService:
         normalized_message = normalize(message)
         query = normalize(analysis.busqueda)
         generic_query_tokens = {
+            "comprar",
+            "comprarla",
+            "comprarlo",
+            "conseguir",
+            "consigo",
             "detall",
             "detalle",
             "detalles",
             "informacion",
+            "puedo",
             "precio",
             "stock",
             "sus",
+            "vende",
+            "venden",
         }
         has_no_explicit_product = not query or set(query.split()).issubset(generic_query_tokens)
         if not has_no_explicit_product:
@@ -671,6 +679,14 @@ class ChatService:
             "tiene stock",
             "hay stock",
             "esta disponible",
+            "donde la puedo comprar",
+            "donde lo puedo comprar",
+            "donde puedo comprarla",
+            "donde puedo comprarlo",
+            "donde la consigo",
+            "donde lo consigo",
+            "en que tienda la venden",
+            "en que tienda lo venden",
         )
 
     @staticmethod
@@ -1029,7 +1045,7 @@ class ChatService:
 
     @staticmethod
     def _asks_store_availability(message: str) -> bool:
-        return contains_any(
+        return is_purchase_location_request(message) or contains_any(
             message,
             "en que tienda",
             "en que tiendas",

@@ -180,6 +180,18 @@ def contains_any(text: str, *phrases: str) -> bool:
     return any(f" {normalize(phrase)} " in normalized for phrase in phrases)
 
 
+def is_purchase_location_request(text: str) -> bool:
+    normalized = normalize(text)
+    return bool(
+        re.search(r"\bdonde\b.*\b(?:compr(?:ar\w*|o)|consig\w*|vend\w*)\b", normalized)
+        or re.search(
+            r"\ben\s+que\s+(?:tienda|tiendas|local|locales)\b.*"
+            r"\b(?:compr(?:ar\w*|o)|consig\w*|vend\w*)\b",
+            normalized,
+        )
+    )
+
+
 def _contains_transfer_request(text: str) -> bool:
     normalized = normalize(text)
     human_role = bool(
@@ -414,6 +426,8 @@ def _detect_intent(text: str, identifiers: dict[str, str | None]) -> IntentType:
         return IntentType.DESPEDIDA
     if _is_greeting(text):
         return IntentType.SALUDO
+    if is_purchase_location_request(text):
+        return IntentType.CONSULTAR_STOCK
     if identifiers["serviceOrder"] or contains_any(
         text, "ods", "orden de servicio", "servicio tecnico", "reparacion"
     ):
@@ -643,6 +657,7 @@ class IntentService:
             category = "consola"
         ambiguous = (
             not intent.is_support
+            and not is_purchase_location_request(normalized)
             and intent
             not in {
                 IntentType.SALUDO,

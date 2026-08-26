@@ -716,6 +716,67 @@ async def test_numbered_and_last_product_references_use_history() -> None:
     )
 
 
+async def test_where_can_i_buy_it_reuses_single_product_and_requests_city() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    product_answer = (
+        "🔎 Encontré estas opciones:\n"
+        "• Balanza de cocina Camry EK8461H máx. 5 kg, con reloj y temporizador "
+        "— S/ 109,00 — disponible"
+    )
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="donde la puedo comprar",
+            historial=[HistoryMessage(rol="asistente", contenido=product_answer)],
+        )
+    )
+
+    assert response.intencion == IntentType.CONSULTAR_STOCK
+    assert "¿En qué ciudad" in response.respuesta
+    vtex.search.assert_not_awaited()
+
+
+async def test_city_after_where_to_buy_keeps_scale_context_and_ignores_max_kg() -> None:
+    chat, vtex, _, ai = service()
+    ai.analyze.side_effect = ExternalServiceError("offline")
+    product = Product(
+        id="ek8461h",
+        nombre="Balanza de cocina Camry EK8461H máx. 5 kg, con reloj y temporizador",
+        precio=109,
+        disponible=True,
+        categorias=["/Electrohogar/Balanzas de cocina/"],
+    )
+    vtex.search.return_value = [product]
+    vtex.location_availability.return_value = LocationAvailability(
+        tiendas_recojo=[PickupStore(id="aqp-1", nombre="Coolbox Arequipa", ciudad="Arequipa")]
+    )
+    product_answer = (
+        "🔎 Encontré estas opciones:\n"
+        "• Balanza de cocina Camry EK8461H máx. 5 kg, con reloj y temporizador "
+        "— S/ 109,00 — disponible"
+    )
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="Arequipa",
+            historial=[
+                HistoryMessage(rol="asistente", contenido=product_answer),
+                HistoryMessage(rol="usuario", contenido="donde la puedo comprar"),
+                HistoryMessage(
+                    rol="asistente",
+                    contenido="¿En qué ciudad deseas buscar tiendas con disponibilidad para recojo?",
+                ),
+            ],
+        )
+    )
+
+    assert response.intencion == IntentType.CONSULTAR_STOCK
+    assert "Coolbox Arequipa" in response.respuesta
+    assert "ek8461h" in str(vtex.search.await_args).lower()
+    assert "precio_maximo" not in str(vtex.search.await_args).lower()
+
+
 async def test_ordinal_followup_extracts_only_name_from_unformatted_sales_bullet() -> None:
     chat, vtex, _, ai = service()
     ai.analyze.side_effect = ExternalServiceError("offline")
