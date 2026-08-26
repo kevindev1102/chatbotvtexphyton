@@ -277,6 +277,54 @@ async def test_marketplace_order_returns_cic_message_instead_of_generic_error() 
     ai.analyze.assert_not_awaited()
 
 
+async def test_service_order_can_be_queried_with_ods_without_document() -> None:
+    chat, vtex, coolbox, ai = service()
+    coolbox.service_orders.return_value = CoolboxResponse.model_validate(
+        {
+            "result": True,
+            "ordenesServicio": [
+                {
+                    "ordenServicio": "ODS2026090168",
+                    "fecha": "08/08/2026",
+                    "mensaje": "Tu orden de servicio técnico se encuentra en proceso.",
+                }
+            ],
+        }
+    )
+
+    response = await chat.process(ChatRequest(mensaje="ODS2026090168"))
+
+    assert response.intencion == IntentType.CONSULTAR_ORDEN_SERVICIO
+    assert "ODS: ODS2026090168" in response.respuesta
+    assert "se encuentra en proceso" in response.respuesta
+    assert "DNI" not in response.respuesta
+    coolbox.service_orders.assert_awaited_once_with(None, "ODS2026090168")
+    vtex.search.assert_not_awaited()
+    ai.analyze.assert_not_awaited()
+
+
+async def test_service_orders_can_be_queried_by_document_without_ods() -> None:
+    chat, _, coolbox, ai = service()
+    coolbox.service_orders.return_value = CoolboxResponse.model_validate(
+        {
+            "result": True,
+            "ordenesServicio": [
+                {
+                    "ordenServicio": "ODS2026090168",
+                    "mensaje": "En proceso",
+                }
+            ],
+        }
+    )
+
+    response = await chat.process(ChatRequest(mensaje="Consulta mis ODS con DNI 70927698"))
+
+    assert response.intencion == IntentType.CONSULTAR_ORDEN_SERVICIO
+    assert "ODS: ODS2026090168" in response.respuesta
+    coolbox.service_orders.assert_awaited_once_with("70927698", None)
+    ai.analyze.assert_not_awaited()
+
+
 async def test_order_query_without_identifier_requests_order_or_document() -> None:
     chat, vtex, coolbox, _ = service()
 

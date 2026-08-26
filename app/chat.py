@@ -327,13 +327,16 @@ class ChatService:
                     "orderId",
                 )
             else:
-                response = await self.coolbox.service_orders(analysis.document_number, None)
-                response.ordenes_servicio = self._matching_items(
-                    response.ordenes_servicio,
-                    analysis.service_order,
-                    "ordenServicio",
-                    "ods",
+                response = await self.coolbox.service_orders(
+                    analysis.document_number, analysis.service_order
                 )
+                if analysis.service_order:
+                    response.ordenes_servicio = self._matching_items(
+                        response.ordenes_servicio,
+                        analysis.service_order,
+                        "ordenServicio",
+                        "ods",
+                    )
         except ExternalServiceError:
             return ChatResponse(
                 intencion=analysis.intencion,
@@ -714,6 +717,10 @@ class ChatService:
             if not (analysis.order_id or analysis.document_number):
                 return "Indícame el número de pedido o tu DNI/RUC/CEX para consultar su estado."
             return None
+        if analysis.intencion == IntentType.CONSULTAR_ORDEN_SERVICIO:
+            if not (analysis.service_order or analysis.document_number):
+                return "Indícame el número de ODS o tu DNI/RUC/CEX para consultar su estado."
+            return None
         requirements = {
             IntentType.CONSULTAR_DEVOLUCION_DINERO: (
                 analysis.credit_note,
@@ -723,11 +730,6 @@ class ChatService:
             IntentType.CONSULTAR_EXTORNO: (
                 analysis.order_id,
                 "número de pedido",
-                analysis.document_number,
-            ),
-            IntentType.CONSULTAR_ORDEN_SERVICIO: (
-                analysis.service_order,
-                "ODS",
                 analysis.document_number,
             ),
         }
