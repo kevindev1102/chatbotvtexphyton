@@ -444,6 +444,34 @@ async def test_generic_iphone_query_excludes_accessories() -> None:
     assert response.imagen is None
 
 
+async def test_product_image_is_not_repeated_after_detailed_product_answer() -> None:
+    chat, vtex, _, _ = service()
+    product = Product(
+        nombre="Balanza de cocina Camry EK8461H máx. 5 kg, con reloj y temporizador",
+        disponible=True,
+        imagen_url="https://cdn.example.test/balanza-ek8461h.jpg",
+        caracteristicas={"Capacidad máxima": ["5 kg"]},
+    )
+    vtex.search.return_value = [product]
+
+    response = await chat.process(
+        ChatRequest(
+            mensaje="dame más información",
+            historial=[
+                HistoryMessage(
+                    rol="asistente",
+                    contenido=(
+                        "✨ Características principales de Balanza de cocina Camry EK8461H "
+                        "máx. 5 kg, con reloj y temporizador:\n• Capacidad máxima: 5 kg"
+                    ),
+                )
+            ],
+        )
+    )
+
+    assert response.imagen is None
+
+
 async def test_greeting_before_iphone_query_returns_phones() -> None:
     chat, vtex, _, ai = service()
     ai.analyze.side_effect = ExternalServiceError("offline")
@@ -802,6 +830,8 @@ async def test_primer_modelo_followup_reuses_first_kitchen_scale() -> None:
         precio=109,
         disponible=True,
         categorias=["/Electrohogar/Balanzas de cocina/"],
+        imagen_url="https://cdn.example.test/balanza-ek8461h.jpg",
+        caracteristicas={"Capacidad máxima": ["5 kg"], "Funciones": ["Reloj", "Temporizador"]},
     )
     vtex.search.return_value = [product]
 
@@ -824,11 +854,13 @@ async def test_primer_modelo_followup_reuses_first_kitchen_scale() -> None:
         )
     )
 
-    assert response.intencion == IntentType.BUSCAR_PRODUCTO
+    assert response.intencion == IntentType.CONSULTAR_CARACTERISTICAS
     assert "EK8461H" in response.respuesta
+    assert "Capacidad máxima: 5 kg" in response.respuesta
+    assert "puedo transferirte con un asesor" in response.respuesta
     assert "primer interesa" not in str(vtex.search.await_args).lower()
     assert "ek8461h" in str(vtex.search.await_args).lower()
-    assert response.respuesta.count("•") == 1
+    assert response.imagen == "https://cdn.example.test/balanza-ek8461h.jpg"
 
 
 async def test_numbered_and_last_product_references_use_history() -> None:
@@ -1000,7 +1032,7 @@ async def test_characteristics_followup_reuses_single_product_from_previous_answ
     assert "Apple A18" in response.respuesta
     assert "Pedal" not in response.respuesta
     assert "iphone 16e" in str(vtex.search.await_args).lower()
-    assert response.imagen is None
+    assert response.imagen == "https://cdn.example.test/iphone-16e.jpg"
 
 
 def test_explicit_brand_filter_never_falls_back_to_other_brands() -> None:

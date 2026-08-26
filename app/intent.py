@@ -45,6 +45,7 @@ FILLER_WORDS = {
     "ayudame",
     "quiero",
     "quisiera",
+    "queria",
     "necesito",
     "busco",
     "buscar",
@@ -169,6 +170,7 @@ def normalize(text: str | None) -> str:
         r"\bay\b": "hay",
         r"\bcaracterizticas\b": "caracteristicas",
         r"\bdisponibilida\b": "disponibilidad",
+        r"\bcocina(?:n|s)\b": "cocina",
     }
     for pattern, replacement in corrections.items():
         value = re.sub(pattern, replacement, value)

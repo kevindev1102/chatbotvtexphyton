@@ -689,6 +689,15 @@ class ChatService:
             return "stock"
         if contains_any(normalized_message, "caracteristicas", "especificaciones"):
             return "caracteristicas"
+        if contains_any(
+            normalized_message,
+            "mas informacion",
+            "mas detalles",
+            "me interesa",
+            "estoy interesado",
+            "estoy interesada",
+        ):
+            return "caracteristicas"
         return "buscar"
 
     @staticmethod
@@ -945,6 +954,10 @@ class ChatService:
             if getattr(item, "rol", "") not in {"asistente", "assistant"}:
                 continue
             previous_answer = normalize(getattr(item, "contenido", ""))
+            # Una lista previa menciona el producto, pero no implica que su imagen
+            # se haya enviado. La primera selección detallada sí debe incluirla.
+            if previous_answer.startswith(("encontre estas opciones", "disponibilidad general")):
+                continue
             if (
                 product_name in previous_answer
                 or (query and query in previous_answer)

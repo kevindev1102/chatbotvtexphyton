@@ -75,6 +75,12 @@ def test_bare_marketplace_order_is_recognized_as_order_query() -> None:
     assert analysis.order_id == "FLB-3249328509"
 
 
+def test_kitchen_scale_typo_is_normalized_for_catalog_search() -> None:
+    analysis = IntentService().analyze("quería saber qué balanzas de cocinan tienen")
+
+    assert analysis.busqueda == "balanza cocina"
+
+
 def test_where_to_buy_is_stock_not_existing_order() -> None:
     service = IntentService()
 
