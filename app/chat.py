@@ -1008,15 +1008,22 @@ class ChatService:
         pickup_location = f" cerca de {searched_location}" if searched_location else ""
         pickup_prefix = "También está" if delivery_options else f"Encontré {product.nombre}"
         lines.append(f"📍 {pickup_prefix} disponible para recojo{pickup_location} en:")
-        for store in stores[:5]:
+        for index, store in enumerate(stores[:5]):
             location = ", ".join(value for value in (store.direccion, store.distrito, store.ciudad) if value)
-            distance = f" · {store.distancia_km:.1f} km" if store.distancia_km is not None else ""
-            estimate = (
-                f" · recojo estimado: {self._humanize_shipping_estimate(store.tiempo_recojo)}"
-                if store.tiempo_recojo
-                else ""
-            )
-            lines.append(f"• {store.nombre} — {location}{distance}{estimate}")
+            details: list[str] = []
+            if location:
+                details.append(f"📍 {location}")
+            if store.distancia_km is not None:
+                details.append(f"📏 {store.distancia_km:.1f} km")
+            if store.tiempo_recojo:
+                estimate = self._humanize_shipping_estimate(store.tiempo_recojo)
+                details.append(f"⏳ Recojo estimado: {estimate}")
+            if index:
+                lines.append("")
+            lines.append(f"🏬 {store.nombre}")
+            if details:
+                lines.append("   " + " | ".join(details))
+        lines.append("")
         lines.append("La disponibilidad puede cambiar antes de completar la compra.")
         return "\n".join(lines)
 

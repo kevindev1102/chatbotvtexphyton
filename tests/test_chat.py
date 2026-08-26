@@ -245,6 +245,10 @@ async def test_store_stock_uses_checkout_pickup_simulation_with_location() -> No
     assert "Coolbox Pardo II" in response.respuesta
     assert "disponible para recojo" in response.respuesta
     assert "3 días hábiles" in response.respuesta
+    assert "🏬 Coolbox Pardo II" in response.respuesta
+    assert "📍 Avenida José Pardo 221, Miraflores, Lima" in response.respuesta
+    assert "📏 0.1 km" in response.respuesta
+    assert "⏳ Recojo estimado: 3 días hábiles" in response.respuesta
     vtex.location_availability.assert_awaited_once_with(
         product,
         latitude=-12.12,
