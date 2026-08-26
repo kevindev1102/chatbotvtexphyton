@@ -48,6 +48,21 @@ async def test_screenshot_greeting_variants_do_not_search_catalog() -> None:
         vtex.search.assert_not_awaited()
 
 
+async def test_web_generated_conversation_marker_returns_welcome_without_catalog_search() -> None:
+    chat, vtex, coolbox, ai = service()
+
+    response = await chat.process(ChatRequest(mensaje="Consulta generada desde web."))
+
+    assert response.intencion == IntentType.SALUDO
+    assert "¡Hola!" in response.respuesta
+    assert "No encontré productos" not in response.respuesta
+    assert response.es_transferencia is False
+    assert response.es_despedida is False
+    vtex.search.assert_not_awaited()
+    coolbox.orders_by_number.assert_not_awaited()
+    ai.answer.assert_not_awaited()
+
+
 async def test_farewell_sets_farewell_flag() -> None:
     chat, vtex, _, ai = service()
 

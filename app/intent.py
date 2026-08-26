@@ -265,6 +265,13 @@ def _is_only_social_message(text: str, phrases: tuple[str, ...], allowed_words: 
 
 
 def _is_greeting(text: str) -> bool:
+    if normalize(text) in {
+        "consulta generada desde web",
+        "consulta generada desde la web",
+        "consulta iniciada desde web",
+        "inicio de consulta web",
+    }:
+        return True
     return _is_only_social_message(
         text,
         (
@@ -623,6 +630,8 @@ class IntentService:
         comparisons: list[str] = []
         if intent.is_support:
             query = next((value for value in identifiers.values() if value), None)
+        elif intent in {IntentType.SALUDO, IntentType.DESPEDIDA, IntentType.TRANSFERENCIA}:
+            query = None
         elif intent == IntentType.COMPARAR_PRODUCTOS:
             comparisons = _comparison_terms(message)
             query = " ".join(comparisons)

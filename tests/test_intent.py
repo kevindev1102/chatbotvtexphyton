@@ -14,6 +14,13 @@ def test_detects_greeting_without_confusing_product_greeting() -> None:
     assert product_greeting.busqueda == "iphone"
 
 
+def test_web_generated_conversation_marker_is_greeting() -> None:
+    analysis = IntentService().analyze("Consulta generada desde web.")
+
+    assert analysis.intencion == IntentType.SALUDO
+    assert analysis.busqueda is None
+
+
 def test_detects_farewell() -> None:
     assert IntentService().analyze("Muchas gracias, eso es todo").intencion == IntentType.DESPEDIDA
 
