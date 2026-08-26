@@ -300,12 +300,9 @@ class ChatService:
 
         try:
             if analysis.intencion == IntentType.CONSULTAR_PEDIDO:
-                if analysis.order_id and self.vtex.can_query_orders:
-                    order = await self.vtex.get_order(analysis.order_id)
-                    return ChatResponse(
-                        intencion=analysis.intencion,
-                        respuesta=self._vtex_order_answer(order),
-                    )
+                # CIC contiene el estado logístico vigente (por ejemplo, Entregado).
+                # VTEX conserva estados comerciales como Facturado y no debe decidir
+                # la respuesta de seguimiento del pedido.
                 response = (
                     await self.coolbox.orders_by_number(analysis.order_id)
                     if analysis.order_id
@@ -345,38 +342,6 @@ class ChatService:
         return ChatResponse(
             intencion=analysis.intencion, respuesta=self._support_answer(analysis.intencion, response)
         )
-
-    def _vtex_order_answer(self, order: dict[str, Any]) -> str:
-        order_id = str(order.get("orderId") or "").strip()
-        status = str(order.get("statusDescription") or order.get("status") or "").strip()
-        creation_date = self._date_only(order.get("creationDate"))
-        items = [
-            str(item.get("name") or "").strip()
-            for item in order.get("items") or []
-            if isinstance(item, dict) and item.get("name")
-        ]
-        logistics = (order.get("shippingData") or {}).get("logisticsInfo") or []
-        delivery_date = next(
-            (
-                self._date_only(info.get("shippingEstimateDate") or info.get("deliveryWindow"))
-                for info in logistics
-                if isinstance(info, dict) and (info.get("deliveryWindow") or info.get("shippingEstimateDate"))
-            ),
-            "",
-        )
-
-        lines = ["¡Listo! Encontré esta información de tu pedido:"]
-        if order_id:
-            lines.append(f"• Pedido: {order_id}")
-        if status:
-            lines.append(f"• Estado: {status}")
-        if creation_date:
-            lines.append(f"• Fecha de creación: {creation_date}")
-        if delivery_date:
-            lines.append(f"• Entrega estimada: {delivery_date}")
-        if items:
-            lines.append(f"• Productos: {', '.join(items[:3])}")
-        return "\n".join(lines)
 
     @staticmethod
     def _date_only(value: Any) -> str:
