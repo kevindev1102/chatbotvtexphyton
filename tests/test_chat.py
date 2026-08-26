@@ -258,6 +258,25 @@ async def test_order_query_can_use_document_without_order_number() -> None:
     ai.analyze.assert_not_awaited()
 
 
+async def test_marketplace_order_returns_cic_message_instead_of_generic_error() -> None:
+    chat, vtex, coolbox, ai = service()
+    coolbox.orders_by_number.return_value = CoolboxResponse.model_validate(
+        {
+            "result": False,
+            "mensaje": "Ud. no tiene pedidos pendientes en este momento.",
+            "pedidos": None,
+        }
+    )
+
+    response = await chat.process(ChatRequest(mensaje="FLB-3249328509"))
+
+    assert response.intencion == IntentType.CONSULTAR_PEDIDO
+    assert response.respuesta == "Ud. no tiene pedidos pendientes en este momento."
+    coolbox.orders_by_number.assert_awaited_once_with("FLB-3249328509")
+    vtex.get_order.assert_not_awaited()
+    ai.analyze.assert_not_awaited()
+
+
 async def test_order_query_without_identifier_requests_order_or_document() -> None:
     chat, vtex, coolbox, _ = service()
 

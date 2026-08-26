@@ -410,6 +410,8 @@ def _support_identifiers(text: str) -> dict[str, str | None]:
     )
     if not order_id:
         order_id = _extract_identifier(r"\b([a-z0-9-]*\d{10,}[a-z0-9-]*-\d{2})\b", text)
+    if not order_id:
+        order_id = _extract_identifier(r"\b([a-z]{2,10}-\d{6,})\b", text)
     document = _extract_identifier(
         r"(?:dni|ruc|cex|documento)\s*(?:n(?:ro|umero)?\.?|#)?\s*([a-z0-9]{8,12})",
         text,
@@ -419,7 +421,7 @@ def _support_identifiers(text: str) -> dict[str, str | None]:
     credit_note = _extract_identifier(r"\b(?:nota\s*(?:de\s*)?credito|ncr)?\s*([a-z]\d{3}-\d{6,})\b", text)
     service_order = _extract_identifier(r"\b(ODS\d{6,})\b", text)
     return {
-        "orderId": order_id,
+        "orderId": order_id.upper() if order_id else None,
         "documentNumber": document,
         "creditNote": credit_note.upper() if credit_note else None,
         "serviceOrder": service_order.upper() if service_order else None,

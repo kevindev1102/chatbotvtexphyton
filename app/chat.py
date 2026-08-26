@@ -758,7 +758,10 @@ class ChatService:
     def _support_answer(self, intent: IntentType, response: CoolboxResponse) -> str:
         if intent == IntentType.CONSULTAR_PEDIDO:
             if not response.result or not response.pedidos:
-                return "Por ahora no encuentro pedidos pendientes con ese dato. Revisa el número e intenta nuevamente."
+                return response.mensaje or (
+                    "Por ahora no encuentro pedidos pendientes con ese dato. "
+                    "Revisa el número e intenta nuevamente."
+                )
             lines = ["¡Listo! Encontré esta información de tu pedido:"]
             for item in response.pedidos[:3]:
                 details = [

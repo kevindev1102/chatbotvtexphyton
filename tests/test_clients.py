@@ -181,3 +181,27 @@ async def test_coolbox_refreshes_token_after_unauthorized_response() -> None:
 
     assert response.result is True
     assert login_count == 2
+
+
+async def test_coolbox_accepts_null_order_collection_when_cic_finds_no_orders() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/Auth/login":
+            return httpx.Response(200, json={"token": "token"})
+        return httpx.Response(
+            200,
+            json={
+                "result": False,
+                "mensaje": "Ud. no tiene pedidos pendientes en este momento.",
+                "pedidos": None,
+            },
+        )
+
+    client = CoolboxClient(settings(), transport=httpx.MockTransport(handler))
+    try:
+        response = await client.orders_by_number("FLB-3249328509")
+    finally:
+        await client.close()
+
+    assert response.result is False
+    assert response.pedidos == []
+    assert response.mensaje == "Ud. no tiene pedidos pendientes en este momento."

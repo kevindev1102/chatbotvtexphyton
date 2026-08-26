@@ -185,3 +185,9 @@ class CoolboxResponse(BaseModel):
     pedidos: list[dict[str, Any]] = Field(default_factory=list)
     notas_credito: list[dict[str, Any]] = Field(default_factory=list, alias="notasCredito")
     ordenes_servicio: list[dict[str, Any]] = Field(default_factory=list, alias="ordenesServicio")
+
+    @field_validator("pedidos", "notas_credito", "ordenes_servicio", mode="before")
+    @classmethod
+    def normalize_null_collections(cls, value: Any) -> Any:
+        # La Web API de CIC devuelve null en lugar de [] cuando no encuentra datos.
+        return [] if value is None else value
