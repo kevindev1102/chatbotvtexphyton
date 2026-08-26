@@ -30,8 +30,11 @@ def test_maps_best_available_vtex_offer() -> None:
             "productName": "Laptop de prueba",
             "brand": "HP",
             "categories": ["/Computación/Laptops/"],
-            "allSpecifications": ["Memoria RAM"],
+            "allSpecifications": ["Memoria RAM", "ML_PUBLISH", "meli_title", "ML_MIN_STOCK"],
             "Memoria RAM": ["16 GB"],
+            "ML_PUBLISH": ["Sí"],
+            "meli_title": ["Laptop marketplace"],
+            "ML_MIN_STOCK": ["5"],
             "items": [
                 {
                     "itemId": "sku-10",
@@ -56,6 +59,9 @@ def test_maps_best_available_vtex_offer() -> None:
     assert product.disponible is True
     assert product.imagen_url == "https://example.test/image.jpg"
     assert product.caracteristicas["Memoria RAM"] == ["16 GB"]
+    assert "ML_PUBLISH" not in product.caracteristicas
+    assert "meli_title" not in product.caracteristicas
+    assert "ML_MIN_STOCK" not in product.caracteristicas
     assert product.sku_offers[0].sku_id == "sku-10"
 
 

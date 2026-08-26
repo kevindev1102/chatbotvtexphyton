@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -26,6 +27,11 @@ def _decimal(value: Any) -> Decimal | None:
         return parsed if parsed > 0 else None
     except (InvalidOperation, TypeError):
         return None
+
+
+def _is_customer_specification(name: Any) -> bool:
+    key = re.sub(r"[^a-z0-9]+", "_", str(name or "").strip().lower()).strip("_")
+    return bool(key) and not key.startswith(("ml_", "meli_", "mercadolibre_"))
 
 
 class BaseHttpClient:
@@ -267,7 +273,7 @@ class VtexClient(BaseHttpClient):
                 if value
             ]
             for name in specification_names
-            if raw.get(name)
+            if raw.get(name) and _is_customer_specification(name)
         }
         return Product(
             id=raw.get("productId"),
