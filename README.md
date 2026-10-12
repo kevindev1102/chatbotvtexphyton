@@ -163,3 +163,66 @@ ruff check .
 ```
 
 Las pruebas unitarias no consumen VTEX, Coolbox ni OpenAI.
+
+## Chatbot Sodimac Perú
+
+El nuevo `POST /api/chatsodimac` funciona de forma independiente de `POST /api/chat`.
+Acepta `mensaje`, `historial` opcional y el mismo formato de respuesta:
+`respuesta`, `intencion`, `imagen` opcional, `esTransferencia` y `esDespedida`.
+Conserva los últimos 10 mensajes. En este endpoint cada mensaje del historial admite
+hasta 20.000 caracteres para poder reenviar extractos completos del PDF.
+
+```bash
+curl -X POST http://localhost:8080/api/chatsodimac \
+  -H 'Content-Type: application/json' \
+  -d '{"mensaje":"Busco un taladro Bosch","historial":[]}'
+```
+
+- Catálogo: consulta HTML público únicamente en `https://www.sodimac.com.pe/sodimac-pe/`.
+  Extrae datos estructurados de las páginas de búsqueda y fichas de producto, sin
+  ejecutar JavaScript ni seguir redirecciones a otros dominios. Los enlaces de imagen
+  publicados por la página se devuelven desde `media.sodimac.com.pe`; no se descargan.
+- Precios: distingue internet, oferta, regular y tarjeta CMR; conserva la indicación de
+  precio tachado. No calcula descuentos ni inventa precios ausentes. Incluye enlace de
+  fuente y vendedor, ya que la página también publica productos de terceros.
+- Stock: este flujo no verifica inventario por tienda ni cantidad de unidades. La
+  ubicación es aceptada por compatibilidad, pero no se usa para calcular stock o envío.
+- Productos: ofrece hablar con un asesor y activa `esTransferencia` cuando el cliente
+  lo solicita o acepta la oferta del último mensaje del asistente. La aplicación que
+  consume la API debe ejecutar la transferencia real; el backend devuelve la señal.
+- Documento: se procesa desde `documents/sodimac/ces.pdf` mediante
+  `python -m app.sodimac_index`. Extrae el texto de cada versión y usa OCR en páginas
+  con imágenes o sin texto seleccionable. Guarda embeddings multilingües locales,
+  fragmentos y metadatos en Qdrant. La intención es `CONSULTAR_DOCUMENTO`;
+  las páginas se conservan internamente y no aparecen en las respuestas.
+  La búsqueda combina vectores densos y palabras clave con fusión RRF.
+  Si no hay una versión activada o Qdrant no está disponible, se informa el problema;
+  no se responde desde una copia antigua incluida en el código.
+- IA: reutiliza la configuración existente `OPENAI_API_KEY`, `OPENAI_MODEL` y
+  `OPENAI_BASE_URL` para interpretar preguntas, resolver referencias del historial y
+  seleccionar IDs de hasta 3 extractos recuperados localmente. Las consultas de
+  productos no envían fragmentos del PDF. Para IA se envían hasta 4 mensajes previos,
+  limitados a 1.200 caracteres cada uno, omitiendo los extractos del PDF ya respondidos.
+  No usa búsqueda web de OpenAI ni genera los valores
+  comerciales o el texto documental: estos se construyen desde los datos de la fuente.
+  Si la IA falla o no está configurada, utiliza reglas de intención y mantiene
+  la recuperación híbrida en Qdrant.
+  Este modo local es más limitado al resolver preguntas ambiguas o referencias.
+- Docker: Compose incorpora Qdrant y un proceso de indexación bajo el perfil `tools`.
+  Los datos, el modelo y los informes usan volúmenes persistentes independientes.
+  Qdrant no publica puertos en el servidor. El modelo se descarga la primera vez;
+  posteriormente genera embeddings locales sin pagar tokens a un proveedor.
+  Requiere salida HTTPS para esa descarga, el catálogo y la IA configurada.
+- Límites: los dos endpoints comparten el límite por IP configurado. Si Sodimac
+  bloquea el acceso o cambia su estructura HTML, se informa que no se pudo verificar
+  la información; no se sustituye por resultados de otras webs ni datos inventados.
+
+Ejemplo de consulta documental: `{"mensaje":"¿Qué descuentos hay en alquiler de herramientas para socios CES?","historial":[]}`.
+La guía [Ubuntu + Qdrant](deploy/README_SODIMAC_UBUNTU.md) incluye la instalación,
+la carga inicial y la actualización segura del PDF sin reconstruir el chatbot.
+
+Validación específica (sin consumir servicios externos):
+
+```bash
+pytest tests/test_sodimac.py tests/test_sodimac_vectors.py
+```

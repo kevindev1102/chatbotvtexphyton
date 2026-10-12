@@ -14,6 +14,8 @@ from app.errors import ExternalServiceError
 from app.intent import IntentService
 from app.models import ChatRequest, ChatResponse
 from app.rate_limit import ChatRateLimitMiddleware
+from app.sodimac import SodimacChatService, SodimacRequest, SodimacResponse
+from app.sodimac_catalog import SodimacCatalog
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,10 +35,17 @@ async def lifespan(app: FastAPI):
     coolbox = CoolboxClient(settings)
     app.state.settings = settings
     app.state.chat_service = ChatService(IntentService(), vtex, coolbox, ai)
-    yield
-    await ai.close()
-    await vtex.close()
-    await coolbox.close()
+    sodimac = SodimacCatalog(settings.response_timeout_seconds)
+    sodimac_service = SodimacChatService(sodimac, ai)
+    app.state.sodimac_service = sodimac_service
+    try:
+        yield
+    finally:
+        sodimac_service.documents.close()
+        await sodimac.close()
+        await ai.close()
+        await vtex.close()
+        await coolbox.close()
 
 
 app = FastAPI(
@@ -86,3 +95,9 @@ async def unexpected_error(_: Request, error: Exception) -> JSONResponse:
         status_code=500,
         content={"error": "internal_error", "message": "Ocurrió un error interno al procesar la consulta."},
     )
+
+
+@app.post("/api/chatsodimac", response_model=SodimacResponse, response_model_exclude_none=True)
+async def chatsodimac(payload: SodimacRequest, request: Request) -> SodimacResponse:
+    service: SodimacChatService = request.app.state.sodimac_service
+    return await service.process(payload)

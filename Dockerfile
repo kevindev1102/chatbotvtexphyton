@@ -12,8 +12,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PORT=8080
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system chatbot \
     && useradd --system --gid chatbot --create-home --home-dir /home/chatbot chatbot
+
+RUN mkdir -p /models /reports && chown chatbot:chatbot /models /reports
 
 WORKDIR /app
 COPY --from=builder /wheels /wheels

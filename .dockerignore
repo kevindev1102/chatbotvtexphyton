@@ -15,3 +15,6 @@ tests
 .DS_Store
 deploy
 compose*.yaml
+
+documents
+.cache

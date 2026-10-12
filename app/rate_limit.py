@@ -21,7 +21,7 @@ class ChatRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        if request.url.path != "/api/chat":
+        if request.url.path not in {"/api/chat", "/api/chatsodimac"}:
             return await call_next(request)
 
         client_ip = request.client.host if request.client else "unknown"

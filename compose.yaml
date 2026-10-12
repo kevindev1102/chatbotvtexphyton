@@ -1,4 +1,31 @@
+x-sodimac-environment: &sodimac-environment
+  QDRANT_URL: http://qdrant:6333
+  QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+  SODIMAC_COLLECTION_ALIAS: sodimac_ces
+  SODIMAC_EMBEDDING_MODEL: sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+  FASTEMBED_CACHE_PATH: /models
+  SODIMAC_REPORTS_PATH: /reports
+  SODIMAC_OCR_LANGUAGE: spa+eng
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+
 services:
+  qdrant:
+    image: qdrant/qdrant:v1.19.2
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT__TELEMETRY_DISABLED: "true"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    # Internal only: the vector database has no published host port.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
   chatbot-api:
     build:
       context: .
@@ -8,14 +35,50 @@ services:
     env_file:
       - .env
     environment:
+      <<: *sodimac-environment
       PORT: "8080"
       FORWARDED_ALLOW_IPS: "*"
+      SODIMAC_MIN_VECTOR_SCORE: ${SODIMAC_MIN_VECTOR_SCORE:-0.35}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    volumes:
+      - embedding-models:/models
     ports:
       - "127.0.0.1:${HOST_PORT:-8080}:8080"
     read_only: true
     tmpfs:
-      - /tmp:size=64m,mode=1777
+      - /tmp:size=256m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+
+  sodimac-index:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chatbot-vtex-python:latest
+    entrypoint: ["python", "-m", "app.sodimac_index"]
+    environment:
+      <<: *sodimac-environment
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    volumes:
+      - ./documents/sodimac:/documents:ro
+      - embedding-models:/models
+      - document-reports:/reports
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  qdrant-data:
+  embedding-models:
+  document-reports:
