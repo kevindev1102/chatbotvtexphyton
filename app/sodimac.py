@@ -19,7 +19,7 @@ from app.sodimac_documents import terms
 from app.sodimac_vectors import QdrantDocuments
 
 logger = logging.getLogger(__name__)
-OFFER = "¿Estás interesado en alguno de estos productos y deseas que te transfiera con un asesor?"
+OFFER = "😊 ¿Te interesa alguna de estas opciones? Puedo transferirte con un asesor para ayudarte con tu compra."
 
 
 class SodimacIntent(StrEnum):
@@ -288,19 +288,21 @@ class SodimacChatService:
                     "No encontré productos verificables para esa búsqueda en Sodimac. ¿Puedes indicar el nombre o modelo?"
                 ),
             )
-        lines = ["Encontré estas opciones en Sodimac Perú:"]
-        for p in products:
-            lines.extend([f"• {p.nombre}", "; ".join(p.precios) or "Precio no verificado en la página."])
+        lines = ["¡Claro! 😊 Encontré estas opciones en Sodimac Perú:"]
+        for number, p in enumerate(products, start=1):
+            lines.extend(["", f"*{number}. {p.nombre}*"])
+            lines.extend(f"💰 {price}" for price in p.precios)
+            if not p.precios:
+                lines.append("Precio no disponible en la página.")
             if p.marca:
                 lines.append(f"Marca: {p.marca}")
             if p.vendedor:
                 lines.append(f"Vendido por: {p.vendedor}")
             if intent == SodimacIntent.CONSULTAR_CARACTERISTICAS:
                 lines.extend(p.detalles or ["No pude verificar las características adicionales."])
-            lines.append(f"Fuente: {p.url}")
         if intent == SodimacIntent.CONSULTAR_STOCK:
             lines.append(
                 "No puedo confirmar stock por tienda ni unidades; verifica disponibilidad con tu ubicación en la web de Sodimac."
             )
-        lines.extend(["Los precios y condiciones pueden cambiar antes de la compra.", OFFER])
+        lines.extend(["", "Los precios y condiciones pueden cambiar antes de la compra.", "", OFFER])
         return SodimacResponse(intencion=intent, respuesta="\n".join(lines), imagen=products[0].imagen)
