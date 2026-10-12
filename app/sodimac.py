@@ -244,7 +244,7 @@ class SodimacChatService:
             if document_error:
                 return SodimacResponse(
                     intencion=SodimacIntent.CONSULTAR_DOCUMENTO,
-                    respuesta="No pude consultar el documento del CES en este momento. Intenta nuevamente más tarde.",
+                    respuesta="No pude verificar esa información del CES en este momento. Intenta nuevamente más tarde.",
                 )
             if used_ai:
                 selected = [p for p in candidates if p["id"] in analysis.fragmentos]

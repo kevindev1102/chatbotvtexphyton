@@ -312,7 +312,7 @@ async def test_document_followup_without_page_reference(service):
 async def test_qdrant_failure_is_reported_without_old_document_fallback(service):
     service.documents.search.side_effect = ExternalServiceError("Qdrant offline")
     result = await service.process(SodimacRequest(mensaje="inscripción CES"))
-    assert "No pude consultar el documento" in result.respuesta
+    assert "No pude verificar esa información del CES" in result.respuesta
     assert not service.catalog.search.called
 
 
