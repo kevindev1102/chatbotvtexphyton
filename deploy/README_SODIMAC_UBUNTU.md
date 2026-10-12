@@ -168,3 +168,21 @@ docker compose run --rm sodimac-index index /documents/ces.pdf
 La descarga nueva queda en el volumen existente. No hace falta borrar Qdrant ni
 los volúmenes. El tamaño del archivo del modelo no equivale a la memoria máxima
 consumida: comprueba RAM disponible y evita ejecutar varias indexaciones a la vez.
+
+### Consulta de segmento CES
+
+En `/root/chatbotvtexphyton/.env`, configura `SODIMAC_DB_HOST`,
+`SODIMAC_DB_PORT`, `SODIMAC_DB_NAME`, `SODIMAC_DB_USER`,
+`SODIMAC_DB_PASSWORD` y opcionalmente `SODIMAC_DB_SSLMODE` (por defecto `prefer`).
+Las credenciales no se guardan en Git. El servicio usa la base PostgreSQL existente;
+no crea contenedores PostgreSQL ni modifica tablas. Necesita acceso de lectura a
+`public.tbl_clientes_ces` y conectividad desde Ubuntu al puerto PostgreSQL.
+
+Después de configurar, ejecuta `docker compose up -d --build chatbot-api`.
+Consulta el mismo endpoint `/api/chatsodimac` con
+`{"mensaje":"¿Cuál es mi segmento? Mi DNI es 00123456","historial":[]}`.
+Si falta el documento, lo solicita y acepta el siguiente mensaje usando `historial`.
+Devuelve únicamente el segmento; si no existe, `No cuentas con segmento.`.
+Un error de conexión se informa como indisponibilidad, sin afirmar que no existe.
+La consulta usa parámetros y una conexión de solo lectura con tiempos máximos.
+No envía el documento ni el segmento a OpenAI para resolver esta consulta.

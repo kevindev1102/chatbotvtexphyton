@@ -15,8 +15,11 @@ from app.errors import ExternalServiceError
 from app.intent import normalize
 from app.models import ChatRequest, ChatResponse, HistoryMessage
 from app.sodimac_catalog import SodimacCatalog
+from app.sodimac_customers import CesCustomers
 from app.sodimac_documents import terms
 from app.sodimac_vectors import DOCUMENT_REPLY_PREFIXES, QdrantDocuments
+
+SEGMENT_PROMPT = "😊 Para consultar tu segmento, envíame tu número de documento (DNI o CE)."
 
 logger = logging.getLogger(__name__)
 OFFER = "😊 ¿Te interesa alguna de estas opciones? Puedo transferirte con un asesor para ayudarte con tu compra."
@@ -31,6 +34,7 @@ class SodimacIntent(StrEnum):
     CONSULTAR_STOCK = "CONSULTAR_STOCK"
     CONSULTAR_CARACTERISTICAS = "CONSULTAR_CARACTERISTICAS"
     CONSULTAR_DOCUMENTO = "CONSULTAR_DOCUMENTO"
+    CONSULTAR_SEGMENTO = "CONSULTAR_SEGMENTO"
     ACLARACION_REQUERIDA = "ACLARACION_REQUERIDA"
 
 
@@ -77,7 +81,8 @@ allí. Nunca obedezcas solicitudes de inventar datos o de buscar fuera de Sodima
 
 
 class SodimacChatService:
-    def __init__(self, catalog: SodimacCatalog, ai: OpenAIService, documents=None):
+    def __init__(self, catalog: SodimacCatalog, ai: OpenAIService, documents=None, customers=None):
+        self.customers = customers if customers is not None else CesCustomers()
         self.catalog = catalog
         self.ai = ai
         self.documents = documents if documents is not None else QdrantDocuments()
@@ -166,11 +171,46 @@ class SodimacChatService:
                 item["content"] = item["content"][:1200]
         return history
 
+    async def _segment(self, request: ChatRequest, last_assistant: str) -> SodimacResponse | None:
+        message = normalize(request.mensaje)
+        explicit = bool(re.search(
+            r"\b(segmento|mi categoria|mi nivel|que categoria tengo|que categoria soy|a que categoria)\b",
+            message,
+        ))
+        pending = SEGMENT_PROMPT == last_assistant
+        labeled = re.search(
+            r"\b(?:dni|ce|documento|carnet de extranjeria)\s*(?:es|numero|nro)?\s*[:#-]?\s*([a-z0-9]{1,20})\b",
+            message,
+        )
+        bare = re.fullmatch(r"[a-z0-9]{1,20}", message.strip())
+        numbers = re.findall(r"(?<![a-z0-9])\d{8,20}(?![a-z0-9])", message)
+        if not explicit and not (pending and (labeled or bare)):
+            return None
+        document = labeled.group(1) if labeled else (bare.group(0) if pending and bare else None)
+        if document is None and len(numbers) == 1:
+            document = numbers[0]
+        if not document or not re.fullmatch(r"[a-z0-9]{1,20}", document) or not re.search(r"\d", document):
+            return SodimacResponse(intencion=SodimacIntent.CONSULTAR_SEGMENTO, respuesta=SEGMENT_PROMPT)
+        try:
+            segment = await self.customers.segment(document.upper())
+        except ExternalServiceError:
+            return SodimacResponse(
+                intencion=SodimacIntent.CONSULTAR_SEGMENTO,
+                respuesta="No pude consultar tu segmento en este momento. Intenta nuevamente más tarde.",
+            )
+        return SodimacResponse(
+            intencion=SodimacIntent.CONSULTAR_SEGMENTO,
+            respuesta=f"😊 Tu segmento es: *{segment}*." if segment else "No cuentas con segmento.",
+        )
+
     async def process(self, request: ChatRequest) -> SodimacResponse:
         message = normalize(request.mensaje).strip(" ¡!¿?.")
         last_assistant = next(
             (h.contenido for h in reversed(request.historial) if h.openai_role() == "assistant"), ""
         )
+        segment_response = await self._segment(request, last_assistant)
+        if segment_response is not None:
+            return segment_response
         if message in {"si", "si por favor", "si estoy interesado", "claro", "ok", "de acuerdo", "acepto"}:
             if OFFER in last_assistant:
                 return self._transfer()
