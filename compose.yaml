@@ -2,7 +2,7 @@ x-sodimac-environment: &sodimac-environment
   QDRANT_URL: http://qdrant:6333
   QDRANT_API_KEY: ${QDRANT_API_KEY:-}
   SODIMAC_COLLECTION_ALIAS: sodimac_ces
-  SODIMAC_EMBEDDING_MODEL: sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+  SODIMAC_EMBEDDING_MODEL: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
   FASTEMBED_CACHE_PATH: /models
   XDG_CACHE_HOME: /models/cache
   HF_HOME: /models/huggingface

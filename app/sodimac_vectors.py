@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import math
-import os
 import re
 import threading
 from dataclasses import dataclass
@@ -17,7 +16,7 @@ from app.config import PROJECT_ROOT, _environment
 from app.errors import ExternalServiceError
 from app.sodimac_documents import terms
 
-PIPELINE_VERSION = "pdf-ocr-hybrid-v1"
+PIPELINE_VERSION = "pdf-ocr-hybrid-v2-small-chunks"
 
 
 @dataclass(frozen=True)
@@ -25,7 +24,7 @@ class VectorSettings:
     url: str = "http://localhost:6333"
     api_key: str = ""
     alias: str = "sodimac_ces"
-    model: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+    model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     cache: str = str(PROJECT_ROOT / ".cache/embeddings")
     min_score: float = 0.35
     ocr_language: str = "spa+eng"
@@ -69,7 +68,7 @@ class LocalEmbeddings:
             self._model = TextEmbedding(
                 model_name=self.settings.model,
                 cache_dir=self.settings.cache,
-                threads=max(1, min(4, os.cpu_count() or 1)),
+                threads=1,
             )
             self._tokenizer = Tokenizer.from_str(self._model.model.tokenizer.to_str())
             self._tokenizer.no_truncation()
@@ -78,9 +77,9 @@ class LocalEmbeddings:
     def encode(self, texts: list[str]) -> list[list[float]]:
         with self._lock:
             self._load()
-            return [vector.tolist() for vector in self._model.embed(texts, batch_size=16)]
+            return [vector.tolist() for vector in self._model.embed(texts, batch_size=1)]
 
-    def split(self, text: str, size: int = 320, overlap: int = 40) -> list[str]:
+    def split(self, text: str, size: int = 100, overlap: int = 20) -> list[str]:
         with self._lock:
             self._load()
             offsets = self._tokenizer.encode(text, add_special_tokens=False).offsets

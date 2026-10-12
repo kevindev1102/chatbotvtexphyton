@@ -14,8 +14,8 @@ Requiere Docker Engine y Docker Compose v2 ya instalados.
 - `embedding-models`: caché compartida del modelo multilingüe y bloqueo de indexación.
 - `document-reports`: informes de extracción para revisar OCR y tablas.
 
-Se utiliza `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` con FastEmbed
-(768 dimensiones). Los embeddings se generan en CPU. La primera indexación descarga
+Se utiliza `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` con FastEmbed
+(384 dimensiones). Los embeddings se generan en CPU. La primera indexación descarga
 el modelo; no requiere una cuenta ni una clave de una API de embeddings. El modelo y
 los datos persisten al reiniciar contenedores. No ejecutes `docker compose down -v`
 si quieres conservar esos volúmenes.
@@ -148,3 +148,23 @@ docker compose run --rm sodimac-index index /documents/ces.pdf
 Este cambio de configuración no requiere reconstruir la imagen ni borrar volúmenes.
 El aviso de Hugging Face sobre solicitudes sin autenticación no exige un token para
 este modelo público.
+
+### Servidores de 2 GB de RAM
+
+Se usa MiniLM multilingüe, con un hilo y un fragmento por lote para limitar el pico
+de memoria. Los fragmentos para embeddings se limitan a 100 tokens con 20 de
+solapamiento, dentro del contexto del modelo; las respuestas recuperan la sección
+original completa. No se reutilizan índices generados con otro modelo.
+
+Si tenías la configuración anterior con MPNet y el kernel detuvo Python con
+`oom-killer`, actualiza código e imagen antes de repetir la indexación:
+
+```bash
+git pull --ff-only
+docker compose up -d --build
+docker compose run --rm sodimac-index index /documents/ces.pdf
+```
+
+La descarga nueva queda en el volumen existente. No hace falta borrar Qdrant ni
+los volúmenes. El tamaño del archivo del modelo no equivale a la memoria máxima
+consumida: comprueba RAM disponible y evita ejecutar varias indexaciones a la vez.

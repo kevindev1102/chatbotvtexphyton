@@ -62,7 +62,9 @@ class PdfIndexer:
                 raise ValueError("El índice activo está incompleto; no se modificará")
             self.client.delete_collection(collection)
 
+        print("Extrayendo texto y tablas del PDF...", file=sys.stderr, flush=True)
         pages = extract_pdf(path, self.store.settings.ocr_language, ocr_mode)
+        print("Preparando embeddings locales...", file=sys.stderr, flush=True)
         parents = sections(pages)
         chunks = []
         for parent_id, parent in enumerate(parents):
@@ -87,8 +89,8 @@ class PdfIndexer:
             sparse_vectors_config={"lexical": models.SparseVectorParams(modifier=models.Modifier.IDF)},
             metadata=metadata,
         )
-        for start in range(0, len(chunks), 16):
-            batch = chunks[start : start + 16]
+        for start in range(0, len(chunks), 1):
+            batch = chunks[start : start + 1]
             vectors = self.store.embeddings.encode([c["embedding_text"] for c in batch])
             if len(vectors) != len(batch):
                 raise ValueError("El modelo no generó todos los embeddings")
@@ -105,6 +107,8 @@ class PdfIndexer:
                 for offset, (chunk, vector) in enumerate(zip(batch, vectors, strict=True))
             ]
             self.client.upsert(collection, points=points, wait=True)
+            if (start + 1) % 20 == 0 or start + 1 == len(chunks):
+                print(f"Fragmentos guardados: {start + 1}/{len(chunks)}", file=sys.stderr, flush=True)
         if self.client.count(collection, exact=True).count != len(chunks):
             raise ValueError("No se guardaron todos los fragmentos; la versión anterior sigue activa")
         report = {
