@@ -16,7 +16,7 @@ from app.intent import normalize
 from app.models import ChatRequest, ChatResponse, HistoryMessage
 from app.sodimac_catalog import SodimacCatalog
 from app.sodimac_documents import terms
-from app.sodimac_vectors import QdrantDocuments
+from app.sodimac_vectors import DOCUMENT_REPLY_PREFIXES, QdrantDocuments
 
 logger = logging.getLogger(__name__)
 OFFER = "😊 ¿Te interesa alguna de estas opciones? Puedo transferirte con un asesor para ayudarte con tu compra."
@@ -109,7 +109,7 @@ class SodimacChatService:
             for item in reversed(request.historial):
                 if item.openai_role() == "assistant":
                     if "Fuente: TyC CES" in item.contenido or item.contenido.startswith(
-                        "Según el documento proporcionado"
+                        DOCUMENT_REPLY_PREFIXES
                     ):
                         previous = next(
                             (h.contenido for h in reversed(request.historial) if h.openai_role() == "user"),
@@ -160,7 +160,7 @@ class SodimacChatService:
         # PDF excerpts are already retrieved for this question; do not pay to resend them.
         history = self.ai._history(request.historial[-4:])
         for item in history:
-            if item["role"] == "assistant" and item["content"].startswith("Según el documento proporcionado"):
+            if item["role"] == "assistant" and item["content"].startswith(DOCUMENT_REPLY_PREFIXES):
                 item["content"] = "Se respondió una consulta sobre el documento del CES."
             else:
                 item["content"] = item["content"][:1200]

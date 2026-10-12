@@ -16,6 +16,9 @@ from app.config import PROJECT_ROOT, _environment
 from app.errors import ExternalServiceError
 from app.sodimac_documents import terms
 
+DOCUMENT_REPLY_PREFIX = "¡Claro! 😊 Esto indica el documento del CES:"
+DOCUMENT_REPLY_PREFIXES = ("Según el documento proporcionado", DOCUMENT_REPLY_PREFIX)
+
 PIPELINE_VERSION = "pdf-ocr-hybrid-v2-small-chunks"
 
 
@@ -191,5 +194,6 @@ class QdrantDocuments:
     @staticmethod
     def render(passages: list[dict]) -> str:
         if not passages:
-            return "No encontré esa información en el documento del CES. ¿Puedes precisar tu consulta?"
-        return "Según el documento proporcionado:\n\n" + "\n\n".join(p["texto"] for p in passages[:3])
+            return "🔎 No encontré esa información en el documento del CES. ¿Me cuentas un poquito más sobre lo que necesitas? 😊"
+        sections = "\n\n".join("📄 " + p["texto"] for p in passages[:3])
+        return f"{DOCUMENT_REPLY_PREFIX}\n\n{sections}\n\n💬 ¿Te ayudo con otra consulta sobre el CES?"
