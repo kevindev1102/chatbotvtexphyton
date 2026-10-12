@@ -131,3 +131,20 @@ la sección correcta. La IA mantiene instrucciones de usar solo las fuentes recu
 - [Cambio atómico de alias](https://qdrant.tech/documentation/manage-data/collections/)
 - [Búsqueda híbrida](https://qdrant.tech/documentation/search/hybrid-queries/)
 - [Modelos de FastEmbed](https://qdrant.github.io/fastembed/examples/Supported_Models/)
+
+### Descarga del modelo en contenedores de solo lectura
+
+Compose dirige tanto FastEmbed como las cachés auxiliares de Hugging Face/Xet
+al volumen `/models`. `FASTEMBED_CACHE_PATH` por sí solo no cambia la caché de Xet.
+Si una instalación anterior falla intentando escribir en `/home/chatbot/.cache`,
+actualiza el repositorio, recrea la API y repite la indexación:
+
+```bash
+git pull --ff-only
+docker compose up -d chatbot-api
+docker compose run --rm sodimac-index index /documents/ces.pdf
+```
+
+Este cambio de configuración no requiere reconstruir la imagen ni borrar volúmenes.
+El aviso de Hugging Face sobre solicitudes sin autenticación no exige un token para
+este modelo público.

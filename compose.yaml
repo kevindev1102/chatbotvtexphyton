@@ -4,6 +4,10 @@ x-sodimac-environment: &sodimac-environment
   SODIMAC_COLLECTION_ALIAS: sodimac_ces
   SODIMAC_EMBEDDING_MODEL: sentence-transformers/paraphrase-multilingual-mpnet-base-v2
   FASTEMBED_CACHE_PATH: /models
+  XDG_CACHE_HOME: /models/cache
+  HF_HOME: /models/huggingface
+  HF_HUB_CACHE: /models/huggingface/hub
+  HF_XET_CACHE: /models/huggingface/xet
   SODIMAC_REPORTS_PATH: /reports
   SODIMAC_OCR_LANGUAGE: spa+eng
   HF_HUB_DISABLE_TELEMETRY: "1"
