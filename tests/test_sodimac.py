@@ -356,3 +356,27 @@ def test_enrollment_query_expands_synonyms_without_reindexing():
     for verb in ["aplicar", "postular", "unirme", "inscribirme"]:
         assert "Inscripción CES requisitos" in document_query(f"¿Cómo puedo {verb} al CES?")
     assert document_query("descuentos alquiler") == "descuentos alquiler"
+
+
+def test_enrollment_fallback_rewrites_legal_steps_without_section_references():
+    passages = [{"texto": """El registro de cada usuario se verificará completando y suscribiendo el formulario que se encuentra publicado en la WEB y su posterior envío o en su caso a través del llenado del formulario y su presentación en Tienda (según la modalidad de inscripción empleada por el usuario).
+
+Los interesados que cumplan con los requisitos indicados en la sección 1) de Inscripción, podrán ingresar a la WEB y dirigirse a la sección de registro donde deberán completar todos los datos requeridos, aceptar los Términos y Condiciones del CES y marcar la opción de envío del formulario a fin de realizar su registro en el Programa.
+
+En cualquiera de las dos modalidades de inscripción indicadas en esta sección, transcurrido 6 días hábiles después de finalizado el registro en el CES, el solicitante tendrá la condición de socio activo del Programa (en adelante, el “Socio”)."""}]
+    result = QdrantDocuments.render(passages, "como puedo aplicar para el programa CES?")
+    assert "sección" not in result
+    assert "completa tus datos" in result
+    assert "6 días hábiles" in result
+    assert "en tienda" in result
+    assert "18 años" not in result  # Requirements cannot be added without evidence.
+    assert len(result) < 650
+
+
+def test_customer_text_preserves_requirements_and_exclusions():
+    from app.sodimac_documents import customer_text
+
+    result = customer_text("Cumple los requisitos indicados en la sección 1) de Inscripción. Excepto subarriendos Tecnofast.")
+    assert "requisitos de inscripción" in result
+    assert "sección" not in result
+    assert "Excepto subarriendos Tecnofast" in result

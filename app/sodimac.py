@@ -16,7 +16,7 @@ from app.intent import normalize
 from app.models import ChatRequest, ChatResponse, HistoryMessage
 from app.sodimac_catalog import SodimacCatalog
 from app.sodimac_customers import CesCustomers
-from app.sodimac_documents import terms
+from app.sodimac_documents import customer_text, terms
 from app.sodimac_vectors import DOCUMENT_REPLY_PREFIXES, QdrantDocuments
 
 SEGMENT_PROMPT = "😊 Para consultar tu segmento, envíame tu número de documento (DNI o CE)."
@@ -87,6 +87,7 @@ Para destino documento, puntos resume la respuesta en español natural para What
 - Conserva importes, plazos, requisitos y exclusiones relevantes. No inventes pasos, enlaces ni condiciones.
 - Para inscripción explica modalidades, requisitos y pasos, no la introducción legal ni privacidad general.
 - No menciones documentos, PDF, fragmentos, fuentes ni detalles técnicos. No incluyas URLs.
+- No hagas referencias a secciones, numerales o cláusulas: explica directamente los requisitos y pasos.
 - El texto usa una frase sencilla; sin encabezados legales, sin repetir la pregunta ni añadir despedidas.
 - Si el contexto no responde, puntos debe ser []. Para otros destinos puntos también debe ser [].
 Destino aclaracion: preguntas ajenas a productos Sodimac o al documento, o sin referente claro.
@@ -203,7 +204,7 @@ class SodimacChatService:
                     or re.search(r"https?://|www\.|\b(?:PDF|fragmento)\b|seg[uú]n el documento", text, re.IGNORECASE)
                 ):
                     return self.documents.render(selected, query)
-                points.append("• " + text)
+                points.append("• " + customer_text(text))
             return "📌 " + "\n\n".join(points) + "\n\n💬 ¿Te ayudo con algo más sobre el CES?"
         return self.documents.render(selected, query)
 
