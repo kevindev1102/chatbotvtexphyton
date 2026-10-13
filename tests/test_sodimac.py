@@ -557,10 +557,62 @@ def test_more_information_filters_repeated_points_without_hiding_new_facts(servi
 
 
 async def test_general_benefits_do_not_assign_table_percentages_to_unknown_category(service):
-    configure_document_ai(service, DocumentAnswer(estado="respuesta", puntos=[
-        DocumentPoint(texto="Los socios CES tienen 30% de descuento.", fragmento=0),
-        DocumentPoint(texto="Hay beneficios de alquiler según tu categoría.", fragmento=0),
-    ]))
+    configure_document_ai(
+        service,
+        DocumentAnswer(
+            estado="respuesta",
+            puntos=[
+                DocumentPoint(texto="Los socios CES tienen 30% de descuento.", fragmento=0),
+                DocumentPoint(texto="Hay beneficios de alquiler según tu categoría.", fragmento=0),
+            ],
+        ),
+    )
     response = await service.process(SodimacRequest(mensaje="hablame de los beneficios del CES"))
     assert "30%" not in response.respuesta
     assert "según tu categoría" in response.respuesta
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Muchas gracias, hasta luego",
+        "Listo, gracias 😊",
+        "Gracias por tu ayuda",
+        "No necesito nada más",
+        "Eso era todo, gracias",
+        "No gracias",
+        "Chao 👋",
+        "Hasta pronto",
+        "Finalizar conversación",
+        "GRACIAS!!!",
+    ],
+)
+async def test_farewell_sets_boolean_without_search_or_transfer(service, message):
+    response = await service.process(
+        SodimacRequest(
+            mensaje=message,
+            historial=[
+                {"rol": "asistente", "contenido": OFFER},
+            ],
+        )
+    )
+    assert response.model_dump(by_alias=True)["esDespedida"] is True
+    assert response.intencion == "DESPEDIDA"
+    assert response.es_transferencia is False
+    service.catalog.search.assert_not_called()
+    service.documents.search.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Gracias, ¿cuánto cuesta un taladro?",
+        "Antes de despedirme quiero ver taladros",
+        "No quiero terminar la conversación",
+        "Hola, buenas noches",
+    ],
+)
+def test_courtesy_does_not_close_an_active_query(message):
+    from app.sodimac import is_farewell
+
+    assert not is_farewell(message)
