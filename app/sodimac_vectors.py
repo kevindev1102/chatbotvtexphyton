@@ -14,7 +14,7 @@ from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedR
 
 from app.config import PROJECT_ROOT, _environment
 from app.errors import ExternalServiceError
-from app.sodimac_documents import terms
+from app.sodimac_documents import compact_excerpt, document_query, terms
 
 DOCUMENT_REPLY_PREFIXES = (
     "Según el documento proporcionado",
@@ -130,6 +130,7 @@ class QdrantDocuments:
         info = self.client.get_collection(collection)
         if (info.config.metadata or {}).get("embedding_model") != self.settings.model:
             raise ExternalServiceError("El modelo del índice no coincide; vuelve a indexar el PDF")
+        query = document_query(query)
         vector = self.embeddings.encode([query])[0]
         # A dense threshold is applied before fusion; a lexical match is also evidence.
         dense = self.client.query_points(
@@ -195,8 +196,5 @@ class QdrantDocuments:
                 raise ExternalServiceError("No se pudo consultar el documento en Qdrant") from error
 
     @staticmethod
-    def render(passages: list[dict]) -> str:
-        if not passages:
-            return "🔎 No encontré información sobre esa consulta del CES. ¿Me cuentas un poquito más sobre lo que necesitas? 😊"
-        sections = "\n\n".join("📌 " + p["texto"] for p in passages[:3])
-        return f"{sections}\n\n💬 ¿Te ayudo con otra consulta sobre el CES?"
+    def render(passages: list[dict], query: str = "") -> str:
+        return compact_excerpt(passages, query)

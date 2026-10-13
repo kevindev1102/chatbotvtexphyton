@@ -321,3 +321,38 @@ async def test_affiliation_synonym_routes_to_vector_document_search(service):
     assert result.intencion == "CONSULTAR_DOCUMENTO"
     assert service.documents.search.called
     assert not service.catalog.search.called
+
+
+def test_document_summary_requires_matching_evidence_and_preserves_verified_numbers(service):
+    from app.sodimac import DocumentPoint
+
+    passages = [{"id": 0, "texto": "La inscripción requiere ser mayor de 18 años y residir en Perú."}]
+    analysis = SodimacAnalysis(
+        destino="documento", consulta="inscripción", intencion="CONSULTAR_DOCUMENTO",
+        puntos=[DocumentPoint(texto="Debes ser mayor de 18 años y residir en Perú.", fragmento=0,
+                              evidencia=passages[0]["texto"])],
+    )
+    result = service._document_reply(passages, analysis, "inscripción", True)
+    assert "Debes ser mayor de 18" in result
+    assert "Según" not in result
+    analysis.puntos[0].texto = "La inscripción cuesta S/ 99."
+    assert "S/ 99" not in service._document_reply(passages, analysis, "inscripción", True)
+    analysis.puntos[0].evidencia = "Una fuente inventada"
+    assert "S/ 99" not in service._document_reply(passages, analysis, "inscripción", True)
+
+
+def test_document_fallback_is_bounded_and_normalizes_pdf_spacing():
+    passages = [{"texto": "Inscripción:  mayores    de 18 años residentes\nen Perú.\n\n" + "Aviso legal largo. " * 300}]
+    result = QdrantDocuments.render(passages, "como puedo aplicar al CES")
+    assert len(result) < 1200
+    assert "mayores de 18 años residentes en Perú" in result
+    assert "Aviso legal" not in result
+    assert "documento" not in result
+
+
+def test_enrollment_query_expands_synonyms_without_reindexing():
+    from app.sodimac_documents import document_query
+
+    for verb in ["aplicar", "postular", "unirme", "inscribirme"]:
+        assert "Inscripción CES requisitos" in document_query(f"¿Cómo puedo {verb} al CES?")
+    assert document_query("descuentos alquiler") == "descuentos alquiler"
