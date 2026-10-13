@@ -198,16 +198,17 @@ curl -X POST http://localhost:8080/api/chatsodimac \
   La búsqueda combina vectores densos y palabras clave con fusión RRF.
   Si no hay una versión activada o Qdrant no está disponible, se informa el problema;
   no se responde desde una copia antigua incluida en el código.
-- IA: reutiliza la configuración existente `OPENAI_API_KEY`, `OPENAI_MODEL` y
-  `OPENAI_BASE_URL` para interpretar preguntas, resolver referencias del historial y
-  seleccionar IDs de hasta 3 extractos recuperados localmente. Las consultas de
-  productos no envían fragmentos del PDF. Para IA se envían hasta 4 mensajes previos,
-  limitados a 1.200 caracteres cada uno, omitiendo los extractos del PDF ya respondidos.
-  No usa búsqueda web de OpenAI ni genera los valores
-  comerciales o el texto documental: estos se construyen desde los datos de la fuente.
-  Si la IA falla o no está configurada, utiliza reglas de intención y mantiene
-  la recuperación híbrida en Qdrant.
-  Este modo local es más limitado al resolver preguntas ambiguas o referencias.
+- IA: reutiliza `OPENAI_API_KEY`, `OPENAI_MODEL` y `OPENAI_BASE_URL`.
+  Para consultas CES primero recupera hasta 3 fragmentos de Qdrant y después realiza
+  una llamada dedicada a OpenAI para redactar hasta 4 puntos breves para WhatsApp.
+  Cada punto identifica su fuente recuperada y sus cifras se validan contra ella.
+  Envía hasta 6 mensajes previos, limitados a 1.200 caracteres cada uno; conserva los
+  resúmenes breves para continuar el tema y evitar repeticiones. No reenvía respuestas
+  antiguas extensas del PDF. El consumidor debe enviar `historial` en cada petición;
+  el servidor no almacena conversaciones. Si la redacción falla o falta la API key,
+  informa la indisponibilidad sin mostrar texto crudo del PDF. No usa búsqueda web
+  de OpenAI. Productos mantienen sus datos verificados desde Sodimac y la consulta
+  de segmento PostgreSQL no utiliza IA.
 - Docker: Compose incorpora Qdrant y un proceso de indexación bajo el perfil `tools`.
   Los datos, el modelo y los informes usan volúmenes persistentes independientes.
   Qdrant no publica puertos en el servidor. El modelo se descarga la primera vez;

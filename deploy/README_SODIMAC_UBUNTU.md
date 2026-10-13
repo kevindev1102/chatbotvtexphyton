@@ -186,3 +186,15 @@ Devuelve únicamente el segmento; si no existe, `No cuentas con segmento.`.
 Un error de conexión se informa como indisponibilidad, sin afirmar que no existe.
 La consulta usa parámetros y una conexión de solo lectura con tiempos máximos.
 No envía el documento ni el segmento a OpenAI para resolver esta consulta.
+
+
+### Redacción de consultas CES e historial
+
+La API recupera contexto en Qdrant antes de redactar con OpenAI. Requiere
+`OPENAI_API_KEY` válida y un `OPENAI_MODEL` compatible con salidas estructuradas,
+usando la configuración existente. No necesita reindexación del PDF para este cambio.
+Cada petición debe incluir el historial de la conversación: mensajes de usuario y
+respuestas previas de la API. Se utiliza una ventana limitada para resolver seguimientos
+como «dame más información» y evitar repetir detalles. No hay almacenamiento de chats.
+Si OpenAI falla o rechaza la respuesta, la API informa indisponibilidad sin devolver
+extractos legales. Los logs indican el tipo de fallo sin imprimir credenciales ni contexto.

@@ -9,7 +9,15 @@ from fastapi.testclient import TestClient
 
 from app.errors import ExternalServiceError
 from app.main import app
-from app.sodimac import OFFER, SodimacAnalysis, SodimacChatService, SodimacRequest
+from app.sodimac import (
+    DOCUMENT_UNAVAILABLE,
+    OFFER,
+    DocumentAnswer,
+    DocumentPoint,
+    SodimacAnalysis,
+    SodimacChatService,
+    SodimacRequest,
+)
 from app.sodimac_catalog import BASE_URL, SodimacCatalog, StoreProduct, read_products
 from app.sodimac_vectors import QdrantDocuments
 
@@ -196,6 +204,18 @@ async def test_stock_does_not_claim_local_inventory(service):
 
 
 async def test_document_answers_without_page_source_or_catalog(service):
+    configure_document_ai(
+        service,
+        DocumentAnswer(
+            estado="respuesta",
+            puntos=[
+                DocumentPoint(
+                    texto="Para Black, el descuento en alquiler es 30%. No incluye subarriendos Tecnofast.",
+                    fragmento=0,
+                )
+            ],
+        ),
+    )
     result = await service.process(SodimacRequest(mensaje="descuentos alquiler herramientas CES"))
     assert result.intencion == "CONSULTAR_DOCUMENTO"
     assert "página 7" not in result.respuesta
@@ -225,7 +245,6 @@ async def test_ai_cannot_inject_unverified_document_text(service):
                             destino="documento",
                             consulta="requisitos inscripción CES",
                             intencion="CONSULTAR_DOCUMENTO",
-                            fragmentos=[999999],
                         )
                     )
                 )
@@ -233,7 +252,7 @@ async def test_ai_cannot_inject_unverified_document_text(service):
         ),
     )
     result = await service.process(SodimacRequest(mensaje="requisitos inscripción CES"))
-    assert "No encontré" in result.respuesta
+    assert result.respuesta == DOCUMENT_UNAVAILABLE
     assert not service.catalog.search.called
 
 
@@ -323,26 +342,35 @@ async def test_affiliation_synonym_routes_to_vector_document_search(service):
     assert not service.catalog.search.called
 
 
-def test_document_summary_requires_matching_evidence_and_preserves_verified_numbers(service):
+def test_document_summary_requires_retrieved_source_and_preserves_verified_numbers(service):
     from app.sodimac import DocumentPoint
 
     passages = [{"id": 0, "texto": "La inscripción requiere ser mayor de 18 años y residir en Perú."}]
-    analysis = SodimacAnalysis(
-        destino="documento", consulta="inscripción", intencion="CONSULTAR_DOCUMENTO",
-        puntos=[DocumentPoint(texto="Debes ser mayor de 18 años y residir en Perú.", fragmento=0,
-                              evidencia=passages[0]["texto"])],
+    analysis = DocumentAnswer(
+        estado="respuesta",
+        puntos=[
+            DocumentPoint(
+                texto="Debes ser mayor de 18 años y residir en Perú.",
+                fragmento=0,
+            )
+        ],
     )
     result = service._document_reply(passages, analysis, "inscripción", True)
     assert "Debes ser mayor de 18" in result
     assert "Según" not in result
     analysis.puntos[0].texto = "La inscripción cuesta S/ 99."
     assert "S/ 99" not in service._document_reply(passages, analysis, "inscripción", True)
-    analysis.puntos[0].evidencia = "Una fuente inventada"
+    analysis.puntos[0].fragmento = 999
     assert "S/ 99" not in service._document_reply(passages, analysis, "inscripción", True)
 
 
 def test_document_fallback_is_bounded_and_normalizes_pdf_spacing():
-    passages = [{"texto": "Inscripción:  mayores    de 18 años residentes\nen Perú.\n\n" + "Aviso legal largo. " * 300}]
+    passages = [
+        {
+            "texto": "Inscripción:  mayores    de 18 años residentes\nen Perú.\n\n"
+            + "Aviso legal largo. " * 300
+        }
+    ]
     result = QdrantDocuments.render(passages, "como puedo aplicar al CES")
     assert len(result) < 1200
     assert "mayores de 18 años residentes en Perú" in result
@@ -359,11 +387,15 @@ def test_enrollment_query_expands_synonyms_without_reindexing():
 
 
 def test_enrollment_fallback_rewrites_legal_steps_without_section_references():
-    passages = [{"texto": """El registro de cada usuario se verificará completando y suscribiendo el formulario que se encuentra publicado en la WEB y su posterior envío o en su caso a través del llenado del formulario y su presentación en Tienda (según la modalidad de inscripción empleada por el usuario).
+    passages = [
+        {
+            "texto": """El registro de cada usuario se verificará completando y suscribiendo el formulario que se encuentra publicado en la WEB y su posterior envío o en su caso a través del llenado del formulario y su presentación en Tienda (según la modalidad de inscripción empleada por el usuario).
 
 Los interesados que cumplan con los requisitos indicados en la sección 1) de Inscripción, podrán ingresar a la WEB y dirigirse a la sección de registro donde deberán completar todos los datos requeridos, aceptar los Términos y Condiciones del CES y marcar la opción de envío del formulario a fin de realizar su registro en el Programa.
 
-En cualquiera de las dos modalidades de inscripción indicadas en esta sección, transcurrido 6 días hábiles después de finalizado el registro en el CES, el solicitante tendrá la condición de socio activo del Programa (en adelante, el “Socio”)."""}]
+En cualquiera de las dos modalidades de inscripción indicadas en esta sección, transcurrido 6 días hábiles después de finalizado el registro en el CES, el solicitante tendrá la condición de socio activo del Programa (en adelante, el “Socio”)."""
+        }
+    ]
     result = QdrantDocuments.render(passages, "como puedo aplicar para el programa CES?")
     assert "sección" not in result
     assert "completa tus datos" in result
@@ -376,7 +408,159 @@ En cualquiera de las dos modalidades de inscripción indicadas en esta sección,
 def test_customer_text_preserves_requirements_and_exclusions():
     from app.sodimac_documents import customer_text
 
-    result = customer_text("Cumple los requisitos indicados en la sección 1) de Inscripción. Excepto subarriendos Tecnofast.")
+    result = customer_text(
+        "Cumple los requisitos indicados en la sección 1) de Inscripción. Excepto subarriendos Tecnofast."
+    )
     assert "requisitos de inscripción" in result
     assert "sección" not in result
     assert "Excepto subarriendos Tecnofast" in result
+
+
+def configure_document_ai(service, parsed):
+    service.ai = SimpleNamespace(
+        enabled=True,
+        model="configured-model",
+        _history=lambda items: [{"role": h.openai_role(), "content": h.contenido} for h in items],
+        client=SimpleNamespace(
+            responses=SimpleNamespace(
+                parse=AsyncMock(return_value=SimpleNamespace(output_parsed=parsed)),
+            )
+        ),
+    )
+
+
+async def test_document_retrieval_happens_before_dedicated_generation(service):
+    events = []
+
+    async def search(query, limit):
+        events.append("qdrant")
+        return [{"id": 0, "texto": "Puedes inscribirte en tienda o por la web."}]
+
+    async def parse(**kwargs):
+        events.append("openai")
+        assert kwargs["text_format"] is DocumentAnswer
+        assert "Puedes inscribirte" in kwargs["input"][-1]["content"]
+        return SimpleNamespace(
+            output_parsed=DocumentAnswer(
+                estado="respuesta",
+                puntos=[
+                    DocumentPoint(
+                        texto="Puedes inscribirte en tienda o por la web.",
+                        fragmento=0,
+                    )
+                ],
+            )
+        )
+
+    configure_document_ai(service, None)
+    service.documents.search.side_effect = search
+    service.ai.client.responses.parse.side_effect = parse
+    response = await service.process(SodimacRequest(mensaje="como puedo aplicar al CES?"))
+    assert events == ["qdrant", "openai"]
+    assert response.respuesta == "📌 Puedes inscribirte en tienda o por la web."
+
+
+async def test_more_information_resolves_topic_and_keeps_previous_summary(service):
+    configure_document_ai(service, DocumentAnswer(estado="sin_novedades"))
+    request = SodimacRequest(
+        mensaje="dame mas informacion",
+        historial=[
+            {"rol": "usuario", "contenido": "hablame de los beneficios del CES"},
+            {"rol": "asistente", "contenido": "📌 Puedes acceder a descuentos en alquiler."},
+            {"rol": "usuario", "contenido": "dame mas informacion"},
+            {"rol": "asistente", "contenido": "📌 También hay capacitaciones."},
+        ],
+    )
+    response = await service.process(request)
+    query = service.documents.search.call_args.args[0]
+    assert "beneficios" in query
+    call = service.ai.client.responses.parse.call_args.kwargs
+    assert any("descuentos en alquiler" in h["content"] for h in call["input"][:-1])
+    assert any("capacitaciones" in h["content"] for h in call["input"][:-1])
+    assert "no tengo más detalles" in response.respuesta
+    service.catalog.search.assert_not_called()
+
+
+async def test_document_no_ai_never_returns_raw_excerpts(service):
+    response = await service.process(SodimacRequest(mensaje="beneficios CES"))
+    assert response.respuesta == DOCUMENT_UNAVAILABLE
+    assert "Tecnofast" not in response.respuesta
+
+
+async def test_document_writer_failure_never_returns_raw_excerpts(service):
+    configure_document_ai(service, None)
+    service.ai.client.responses.parse.side_effect = TimeoutError()
+    response = await service.process(SodimacRequest(mensaje="beneficios CES"))
+    assert response.respuesta == DOCUMENT_UNAVAILABLE
+    assert "Tecnofast" not in response.respuesta
+
+
+async def test_empty_retrieval_does_not_call_openai(service):
+    configure_document_ai(service, None)
+    service.documents.search.return_value = []
+    response = await service.process(SodimacRequest(mensaje="beneficios CES"))
+    assert "No encontré" in response.respuesta
+    service.ai.client.responses.parse.assert_not_called()
+
+
+async def test_document_writer_rejects_wrong_source(service):
+    configure_document_ai(
+        service,
+        DocumentAnswer(
+            estado="respuesta",
+            puntos=[
+                DocumentPoint(
+                    texto="Te regalan herramientas.",
+                    fragmento=999,
+                )
+            ],
+        ),
+    )
+    response = await service.process(SodimacRequest(mensaje="beneficios CES"))
+    assert response.respuesta == DOCUMENT_UNAVAILABLE
+
+
+async def test_ai_resolved_document_query_gets_retrieved_before_answering(service):
+    configure_document_ai(service, None)
+    service.ai.client.responses.parse.side_effect = [
+        SimpleNamespace(
+            output_parsed=SodimacAnalysis(
+                destino="documento",
+                consulta="beneficios CES",
+                intencion="CONSULTAR_DOCUMENTO",
+            )
+        ),
+        SimpleNamespace(output_parsed=DocumentAnswer(estado="sin_informacion")),
+    ]
+    response = await service.process(SodimacRequest(mensaje="qué ventajas ofrece el club?"))
+    service.documents.search.assert_awaited_once_with("beneficios CES", limit=3)
+    assert service.ai.client.responses.parse.call_args_list[-1].kwargs["text_format"] is DocumentAnswer
+    assert "No encontré" in response.respuesta
+    service.catalog.search.assert_not_called()
+
+
+def test_more_information_filters_repeated_points_without_hiding_new_facts(service):
+    previous = "📌 Los socios CES obtienen un 25% de descuento en la garantía y un 5% en la renta. No aplica a subarriendos Tecnofast."
+    repeated = "Los socios CES obtienen un 25% de descuento en la garantía y un 5% en la renta. No aplica a subarriendos Tecnofast."
+    new = "También puedes acceder a capacitaciones gratuitas."
+    passages = [{"id": 0, "texto": repeated + " " + new}]
+    answer = DocumentAnswer(
+        estado="respuesta",
+        puntos=[
+            DocumentPoint(texto=repeated, fragmento=0),
+            DocumentPoint(texto=new, fragmento=0),
+        ],
+    )
+    response = service._document_reply(passages, answer, "dame mas informacion", True, [previous])
+    assert "25%" not in response
+    assert "capacitaciones" in response
+
+
+async def test_general_benefits_do_not_assign_table_percentages_to_unknown_category(service):
+    configure_document_ai(service, DocumentAnswer(estado="respuesta", puntos=[
+        DocumentPoint(texto="Los socios CES tienen 30% de descuento.", fragmento=0),
+        DocumentPoint(texto="Hay beneficios de alquiler según tu categoría.", fragmento=0),
+    ]))
+    response = await service.process(SodimacRequest(mensaje="hablame de los beneficios del CES"))
+    assert "30%" not in response.respuesta
+    assert "según tu categoría" in response.respuesta
