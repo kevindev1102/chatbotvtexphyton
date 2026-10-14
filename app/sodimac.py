@@ -63,9 +63,10 @@ class DocumentAnswer(BaseModel):
 
 
 class SodimacAnalysis(BaseModel):
-    destino: Literal["producto", "documento", "aclaracion"]
+    destino: Literal["producto", "documento", "aclaracion", "despedida"]
     consulta: str = Field(max_length=200)
     intencion: Literal[
+        "DESPEDIDA",
         "BUSCAR_PRODUCTO",
         "CONSULTAR_PRECIO",
         "CONSULTAR_STOCK",
@@ -77,6 +78,9 @@ class SodimacAnalysis(BaseModel):
 
 ROUTING_PROMPT = """Interpreta preguntas para Sodimac Perú usando el historial.
 Devuelve solo el análisis estructurado; no generes respuestas, precios ni URLs.
+Destino despedida, intención DESPEDIDA: el cliente expresa que terminó, no necesita más ayuda
+o se despide. No sugieras productos ni solicites aclaración. Si junto al agradecimiento hay una
+nueva pregunta o petición concreta, atiende esa petición y no cierres la conversación.
 Destino producto: búsqueda, precio, stock o características de productos del hogar/construcción.
 Consulta contiene solo el producto/marca/modelo buscado, conservando sus números.
 Resuelve ese/la segunda/ese modelo usando los nombres exactos en el historial.
@@ -135,7 +139,8 @@ def is_farewell(message: str) -> bool:
     phrase = (
         r"adios|chau|chao|hasta luego|hasta pronto|nos vemos|bye|goodbye|"
         r"(?:muchas |mil )?gracias(?: por (?:todo|tu ayuda|la ayuda|la informacion|la atencion))?|"
-        r"eso (?:es|era) todo|(?:no|ya no) necesito (?:nada|algo) mas|"
+        r"(?:eso|esto) (?:es|era|seria) todo(?: por hoy)?|(?:nada|ninguna consulta) mas|"
+        r"(?:no|ya no) necesito (?:nada|algo) mas|"
         r"no (?:quiero|deseo) nada mas|terminar (?:la )?conversacion|"
         r"finalizar (?:la )?conversacion|no gracias"
     )
@@ -151,6 +156,14 @@ class SodimacChatService:
         self.catalog = catalog
         self.ai = ai
         self.documents = documents if documents is not None else QdrantDocuments()
+
+    @staticmethod
+    def _goodbye() -> SodimacResponse:
+        return SodimacResponse(
+            intencion=SodimacIntent.DESPEDIDA,
+            respuesta="¡Gracias por comunicarte con Sodimac! 😊 ¡Hasta pronto!",
+            es_despedida=True,
+        )
 
     @staticmethod
     def _transfer() -> SodimacResponse:
@@ -388,11 +401,7 @@ class SodimacChatService:
             (h.contenido for h in reversed(request.historial) if h.openai_role() == "assistant"), ""
         )
         if is_farewell(request.mensaje):
-            return SodimacResponse(
-                intencion=SodimacIntent.DESPEDIDA,
-                respuesta="¡Gracias por comunicarte con Sodimac! 😊 ¡Hasta pronto!",
-                es_despedida=True,
-            )
+            return self._goodbye()
         segment_response = await self._segment(request, last_assistant)
         if segment_response is not None:
             return segment_response
@@ -445,6 +454,8 @@ class SodimacChatService:
 
         if analysis.destino == "documento":
             return await self._answer_document(request, analysis.consulta)
+        if analysis.destino == "despedida" or analysis.intencion == "DESPEDIDA":
+            return self._goodbye()
         if analysis.destino == "aclaracion" or not analysis.consulta.strip():
             return SodimacResponse(
                 intencion=SodimacIntent.ACLARACION_REQUERIDA,

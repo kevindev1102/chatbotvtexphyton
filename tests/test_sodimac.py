@@ -575,6 +575,11 @@ async def test_general_benefits_do_not_assign_table_percentages_to_unknown_categ
 @pytest.mark.parametrize(
     "message",
     [
+        "No gracias eso seria todo",
+        "Nada mas gracias",
+        "No, gracias. Eso sería todo 😊",
+        "Gracias, nada más",
+        "Eso sería todo",
         "Muchas gracias, hasta luego",
         "Listo, gracias 😊",
         "Gracias por tu ayuda",
@@ -610,9 +615,40 @@ async def test_farewell_sets_boolean_without_search_or_transfer(service, message
         "Antes de despedirme quiero ver taladros",
         "No quiero terminar la conversación",
         "Hola, buenas noches",
+        "Nada más quiero saber el precio del taladro",
+        "No gracias, pero quiero consultar beneficios del CES",
     ],
 )
 def test_courtesy_does_not_close_an_active_query(message):
     from app.sodimac import is_farewell
 
     assert not is_farewell(message)
+
+
+async def test_ai_recognized_farewell_also_sets_closing_boolean(service):
+    configure_document_ai(
+        service,
+        SodimacAnalysis(
+            destino="despedida",
+            consulta="",
+            intencion="DESPEDIDA",
+        ),
+    )
+    response = await service.process(
+        SodimacRequest(mensaje="Con eso ya me ayudaste suficiente, te agradezco")
+    )
+    assert response.model_dump(by_alias=True)["esDespedida"] is True
+    assert response.intencion == "DESPEDIDA"
+    service.catalog.search.assert_not_called()
+    service.documents.search.assert_not_called()
+
+
+async def test_endpoint_returns_closing_boolean_for_reported_whatsapp_messages(service):
+    with TestClient(app) as client:
+        app.state.sodimac_service = service
+        for message in ["No gracias eso seria todo", "Nada mas gracias"]:
+            response = client.post("/api/chatsodimac", json={"mensaje": message, "historial": []})
+            assert response.status_code == 200
+            assert response.json()["esDespedida"] is True
+            assert response.json()["intencion"] == "DESPEDIDA"
+            assert response.json()["esTransferencia"] is False
